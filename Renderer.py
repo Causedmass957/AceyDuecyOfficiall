@@ -115,5 +115,34 @@ class Renderer:
         if engine.start_pool[engine.current_player] > 0:
             msg = self.font.render("Must enter all pieces from Start!", True, (255, 100, 100))
             self.screen.blit(msg, (500, SCREEN_HEIGHT - 40))
+        
+        # Draw the Roll/Pass Button
+        button_color = (100, 255, 100) if not engine.moves_available else (200, 200, 200)
+        pygame.draw.rect(self.screen, button_color, ROLL_BUTTON_RECT, border_radius=10)
+        
+        label = "ROLL" if not engine.moves_available else "PASS"
+        text = self.font.render(label, True, BLACK)
+        self.screen.blit(text, (ROLL_BUTTON_RECT.centerx - 25, ROLL_BUTTON_RECT.centery - 12))
+      
+
+    def draw_initial_winner_screen(self, engine):
+        """Draws an overlay showing the initial rolls and the winner."""
+        # Darken the background
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180)) 
+        self.screen.blit(overlay, (0, 0))
+
+        # Show all rolls so Player 4's roll is visible
+        for p_id, roll in engine.player_rolls.items():
+            color = PLAYER_COLORS[p_id]
+            txt = self.font.render(f"Player {p_id} rolled: {roll}", True, color)
+            self.screen.blit(txt, (SCREEN_WIDTH // 2 - 100, 150 + (p_id * 40)))
+
+        # Highlight the winner
+        win_msg = self.font.render(f"PLAYER {engine.current_player} STARTS!", True, WHITE)
+        prompt = self.font.render("Click anywhere to begin the match", True, (200, 200, 200))
+        
+        self.screen.blit(win_msg, (SCREEN_WIDTH // 2 - 120, SCREEN_HEIGHT // 2 + 50))
+        self.screen.blit(prompt, (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2 + 100))
     
     

@@ -37,45 +37,64 @@ def main():
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_pos = pygame.mouse.get_pos()
 
+                # --- Inside your main loop in main.py ---
+
                 if engine.phase == "INITIAL_ROLL":
-                    # ... your existing initial roll logic ...
-                    for p_id in range(1, 5):
+                    for p_id in range(1, engine.num_players + 1):
                         if p_id not in engine.player_rolls:
-                            engine.record_initial_roll(p_id)
-                            # TRIGGER FIRST ROLL IMMEDIATELY IF PHASE CHANGES
-                            if engine.phase == "PLAYING":
-                                engine.roll_dice() 
-                            break
+                            if is_clicking_start(mouse_pos, p_id):
+                                # FIX: Match the method name in GameEngine.py
+                                engine.record_initial_roll(p_id) 
+                                
+                                if len(engine.player_rolls) == engine.num_players:
+                                    # The Engine already calls _determine_turn_order 
+                                    # inside record_initial_roll when everyone is done.
+                                    engine.phase = "SHOW_INITIAL_WINNER" 
+                                break
+
+                # B. Handle the "Click-Through" to start the game
+                elif engine.phase == "SHOW_INITIAL_WINNER":
+                    # Any click during the victory screen starts the actual game
+                    engine.phase = "PLAYING"
                 
+                # main.py - Inside the event loop
+
                 elif engine.phase == "PLAYING":
-                    # A. Identify click location
+                    # 1. HANDLE BUTTON (Roll/Pass)
+                    if ROLL_BUTTON_RECT.collidepoint(mouse_pos):
+                        if not engine.moves_available:
+                            engine.roll_dice()
+                        else:
+                            engine.pass_turn()
+                        continue  # FIX: 'continue' stays in the loop, 'return' crashes it.
+
+                    # 2. HANDLE ACEY-DEUCEY BONUS ROLL
+                    if engine.waiting_for_doubles_roll:
+                        engine.roll_dice()
+                        continue 
+
+                    # 3. IDENTIFY CLICK LOCATION
                     clicked_idx = board_logic.get_index_from_mouse(mouse_pos)
                     if is_clicking_start(mouse_pos, engine.current_player):
                         clicked_idx = -2
-                    # Quick check for your main loop:
-                    if abs(mouse_pos[0] - (BOARD_START_X + BLOCK_WIDTH + MIDDLE_BAR//2)) < (MIDDLE_BAR // 2):
-                        clicked_idx = -1
-                    # Inside main.py PLAYING phase click handling:
-                    if engine.waiting_for_doubles_roll:
-                        engine.roll_dice()
-                        # Don't try to select pieces this click
-                        continue 
-                    # B. Selection vs Movement
+                    
+                    # 4. SELECTION & MOVEMENT
                     if engine.selected_index is None:
                         if engine.select_piece(engine.current_player, clicked_idx):
                             print(f"Selected: {clicked_idx}")
                     else:
-                        # Attempt the move
+                        # Attempt to move the piece
                         if engine.attempt_move(engine.current_player, engine.selected_index, clicked_idx):
                             print(f"Moved to: {clicked_idx}")
+                            
+                            # ONLY check if the turn is over after a successful move
+                            if not engine.moves_available:
+                                engine.next_turn()
                         
-                        # ALWAYS reset selection after a second click (success or fail)
-                        engine.selected_index = None
+                        # Reset selection after any movement attempt
+                        engine.selected_index = None              
 
-                    # C. Check if turn is over
-                    if not engine.moves_available:
-                        engine.next_turn()
-                        engine.roll_dice() # Roll for the next player automatically
+                    
 
         # B. Update Logic
         # (The Engine handles the state; we just need to keep the UI in sync)
@@ -92,6 +111,8 @@ def main():
         # Draw specific Start/Jail info for the "Initial Roll" phase
         if engine.phase == "INITIAL_ROLL":
             draw_setup_overlay(screen, view.font, engine.player_rolls)
+        elif engine.phase == "SHOW_INITIAL_WINNER":
+            view.draw_initial_winner_screen(engine)
 
         pygame.display.flip()
         clock.tick(FPS)

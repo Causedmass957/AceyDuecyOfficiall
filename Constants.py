@@ -1,4 +1,7 @@
 # --- Window Settings ---
+import pygame
+
+
 SCREEN_WIDTH = 1200
 SCREEN_HEIGHT = 800
 FPS = 60
@@ -9,6 +12,9 @@ BOARD_LIGHT = (222, 184, 135) # Burlywood (Light triangles)
 BOARD_DARK = (139, 69, 19)    # Saddle Brown (Dark triangles)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
+
+# --- UI Button Settings ---
+ROLL_BUTTON_RECT = pygame.Rect(SCREEN_WIDTH // 2 - 60, SCREEN_HEIGHT // 2 + 75, 120, 50)
 
 # --- Rendering Tweaks ---
 PIECE_RADIUS = 22
@@ -31,6 +37,14 @@ MIDDLE_BAR = 100    # Space for Jail in the center
 MARGIN_X = 60     # Space on the left/right
 MARGIN_Y = 50      # Space on top/bottom
 
+# Constants.py
+# Moved down 100 pixels (from SCREEN_HEIGHT // 2 - 25)
+ROLL_BUTTON_RECT = pygame.Rect(SCREEN_WIDTH // 2 - 60, SCREEN_HEIGHT // 2 + 75, 120, 50)
+
+# This is the ONLY offset we use to center everything
+# If the board is being cut off on the left, this number needs to be positive
+HORIZONTAL_OFFSET = -50
+
 # The width of 6 triangles
 BLOCK_WIDTH = PIPE_WIDTH * 6 
 
@@ -39,7 +53,7 @@ TOTAL_BOARD_WIDTH = (BLOCK_WIDTH * 2) + MIDDLE_BAR
 
 # The "Starting X" that centers everything on your screen
 # This ensures equal margins on the left and right
-BOARD_START_X = (SCREEN_WIDTH - TOTAL_BOARD_WIDTH) // 2
+BOARD_START_X = (SCREEN_WIDTH - TOTAL_BOARD_WIDTH) // 2 + HORIZONTAL_OFFSET
 
 # The gap between the left and right sets of triangles
 MIDDLE_BAR_WIDTH = 100 
@@ -48,9 +62,7 @@ MIDDLE_BAR_WIDTH = 100
 # Assuming 12 triangles total across the top, 6 on each side
 BOARD_CONTENT_WIDTH = (PIPE_WIDTH * 12) + MIDDLE_BAR_WIDTH
 
-# This is the ONLY offset we use to center everything
-# If the board is being cut off on the left, this number needs to be positive
-HORIZONTAL_OFFSET = -100
+
 
 
 def generate_board_coords():

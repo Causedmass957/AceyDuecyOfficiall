@@ -69,7 +69,7 @@ class GameEngine:
 
         # No tie? Proceed to set the counter-clockwise order
         highest_roller = winners[0]
-        players = [1, 2, 3, 4]
+        players = [1, 2, 4, 3]
         start_idx = players.index(highest_roller)
         
         self.turn_order = []
@@ -280,4 +280,17 @@ class GameEngine:
             self.moves_available.remove(move_value)
             return True
 
-        return False
+        return False    
+
+    def pass_turn(self):
+        """Manually ends the current turn and resets moves."""
+        self.moves_available = []
+        self.dice_values = []
+        
+        # Logic to move to next player in turn_order
+        if self.current_player in self.turn_order:
+            idx = self.turn_order.index(self.current_player)
+            self.current_player = self.turn_order[(idx + 1) % len(self.turn_order)]
+        
+        # Ensure the phase remains 'PLAYING' for the next person
+        self.phase = "PLAYING"
