@@ -8,28 +8,34 @@ class Renderer:
 
     def draw_background(self):
         self.screen.fill(BG_COLOR)
-        # The bar starts exactly after the first block of 6 triangles
+        # Bar is precisely after the first 6 triangles
         bar_x = BOARD_START_X + BLOCK_WIDTH
         pygame.draw.rect(self.screen, BLACK, (bar_x, 0, MIDDLE_BAR, SCREEN_HEIGHT))
 
-    def draw_points(self, board_logic): # Add board_logic as an argument
+    def draw_points(self, board_logic):
         for i in range(24):
-            # Use the EXACT same X as the pieces and hitboxes
             final_x = board_logic.get_x_with_gap(i)
             base_y = BOARD_COORDS[i][1]
-            
             color = BOARD_LIGHT if i % 2 == 0 else BOARD_DARK
             
-            if i <= 11: # Top Row
-                pts = [(final_x - PIPE_WIDTH//2, base_y), 
-                       (final_x + PIPE_WIDTH//2, base_y), 
-                       (final_x, base_y + PIPE_HEIGHT)]
-            else: # Bottom Row
-                pts = [(final_x - PIPE_WIDTH//2, base_y), 
-                       (final_x + PIPE_WIDTH//2, base_y), 
-                       (final_x, base_y - PIPE_HEIGHT)]
-            
+            # Triangle points
+            if i <= 11: pts = [(final_x - 40, base_y), (final_x + 40, base_y), (final_x, base_y + 300)]
+            else: pts = [(final_x - 40, base_y), (final_x + 40, base_y), (final_x, base_y - 300)]
             pygame.draw.polygon(self.screen, color, pts)
+
+    def draw_jail(self, engine):
+        # Center of the bar
+        center_x = BOARD_START_X + BLOCK_WIDTH + (MIDDLE_BAR // 2)
+        for p_id, count in engine.jail.items():
+            if count <= 0: continue
+            color = PLAYER_COLORS[p_id]
+            base_y = (SCREEN_HEIGHT // 5) * p_id 
+            
+            if engine.selected_index == -1 and engine.current_player == p_id:
+                pygame.draw.circle(self.screen, (255, 255, 0), (center_x, base_y), PIECE_RADIUS + 5, 3)
+
+            pygame.draw.circle(self.screen, color, (center_x, base_y), PIECE_RADIUS)
+            pygame.draw.circle(self.screen, (255,255,255), (center_x, base_y), PIECE_RADIUS, 2)
 
     def draw_player_pieces(self, engine, board_logic):
         """
@@ -110,36 +116,4 @@ class Renderer:
             msg = self.font.render("Must enter all pieces from Start!", True, (255, 100, 100))
             self.screen.blit(msg, (500, SCREEN_HEIGHT - 40))
     
-    def draw_jail(self, engine):
-        """
-        Draws pieces currently in Jail in the center of the board.
-        """
-        # Calculate the exact center of the black bar
-        # (Start of board) + (First 6 triangles) + (Half the bar width)
-        center_x = BOARD_START_X + BLOCK_WIDTH + (MIDDLE_BAR // 2)
-        
-        for p_id, count in engine.jail.items():
-            if count <= 0:
-                continue
-                
-            color = PLAYER_COLORS[p_id]
-            
-            # Space the 4 players out vertically so they don't overlap
-            # Player 1 near the top, Player 4 near the bottom
-            base_y = (SCREEN_HEIGHT // 5) * p_id 
-            
-            # 1. Draw selection glow if it's the current player's turn and they clicked jail
-            if engine.selected_index == -1 and engine.current_player == p_id:
-                pygame.draw.circle(self.screen, (255, 255, 0), (center_x, base_y), PIECE_RADIUS + 5, 3)
-
-            # 2. Draw the piece circle
-            pygame.draw.circle(self.screen, color, (center_x, base_y), PIECE_RADIUS)
-            
-            # 3. Draw a white border for visibility
-            pygame.draw.circle(self.screen, (255, 255, 255), (center_x, base_y), PIECE_RADIUS, 2)
-            
-            # 4. If there's more than one piece in jail, draw the number
-            if count > 1:
-                txt = self.font.render(str(count), True, (255, 255, 255))
-                # Center the text slightly
-                self.screen.blit(txt, (center_x - 5, base_y - 10))
+    

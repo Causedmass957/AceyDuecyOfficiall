@@ -237,52 +237,46 @@ class GameEngine:
         return False
     
     def attempt_move(self, player_id, start_idx, target_idx):
-        """Processes the move if legal and consumes the die value."""
-        # 1. Basic validation
         if start_idx is None or target_idx is None:
             return False
 
-        # 2. Get the player's specific path (their 0-23 map)
         path = self.get_player_path(player_id)
         
-        # 3. Calculate 'distance' based on the player's unique path
         try:
-            if start_idx == -2: # From Start Pool
-                # The target_idx must exist in their path
-                # move_value is the number of steps into the board (1-indexed)
+            # FIX: Added -1 (Jail) to the entry logic
+            if start_idx == -2 or start_idx == -1: 
                 move_value = path.index(target_idx) + 1
-            else: # From a triangle on the board
+            else:
                 start_step = path.index(start_idx)
                 target_step = path.index(target_idx)
                 move_value = target_step - start_step
         except ValueError:
-            # This happens if the clicked triangle isn't in this player's path
             return False
 
-        # 4. Is this move_value available in the current dice rolls?
         if move_value in self.moves_available:
-            # Check for blockades (2+ enemy pieces)
+            # Define target_space IMMEDIATELY to avoid NameError
             target_space = self.board[target_idx]
+            
             if len(target_space) >= 2 and target_space[0] != player_id:
                 print("Space is blocked!")
                 return False
 
-            # 5. Success! Update the data
+            # Update origin
             if start_idx == -2:
                 self.start_pool[player_id] -= 1
+            elif start_idx == -1:
+                self.jail[player_id] -= 1 # Correctly remove from Jail
             else:
                 if player_id in self.board[start_idx]:
                     self.board[start_idx].remove(player_id)
 
-            # Handle Hitting (if exactly 1 enemy piece is there)
+            # Handle Hitting (Now target_space is guaranteed to be defined)
             if len(target_space) == 1 and target_space[0] != player_id:
                 victim = target_space.pop()
                 self.jail[victim] += 1
                 print(f"Player {victim} sent to Jail!")
             
             self.board[target_idx].append(player_id)
-            
-            # 6. Spend the die and return True
             self.moves_available.remove(move_value)
             return True
 

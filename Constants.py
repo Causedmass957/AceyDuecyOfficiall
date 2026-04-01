@@ -50,7 +50,8 @@ BOARD_CONTENT_WIDTH = (PIPE_WIDTH * 12) + MIDDLE_BAR_WIDTH
 
 # This is the ONLY offset we use to center everything
 # If the board is being cut off on the left, this number needs to be positive
-HORIZONTAL_OFFSET = 0
+HORIZONTAL_OFFSET = -100
+
 
 def generate_board_coords():
     """

@@ -81,16 +81,13 @@ def main():
         # (The Engine handles the state; we just need to keep the UI in sync)
 
        # C. Drawing
-        # Inside main.py while loop
         view.draw_background()
-        view.draw_points(board_logic) # Updated this line
-        view.draw_player_pieces(engine, board_logic)
-        
-        # Pass 'engine' instead of 'engine.board' to draw_player_pieces
+        view.draw_jail(engine) # Draw jail early so pieces are on top
+        view.draw_points(board_logic)
         view.draw_player_pieces(engine, board_logic)
         view.draw_start_pools(engine)
-        
         view.draw_ui(engine)
+                
 
         # Draw specific Start/Jail info for the "Initial Roll" phase
         if engine.phase == "INITIAL_ROLL":
