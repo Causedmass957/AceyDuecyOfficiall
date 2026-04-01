@@ -52,6 +52,9 @@ def main():
                     clicked_idx = board_logic.get_index_from_mouse(mouse_pos)
                     if is_clicking_start(mouse_pos, engine.current_player):
                         clicked_idx = -2
+                    # Quick check for your main loop:
+                    if abs(mouse_pos[0] - (BOARD_START_X + BLOCK_WIDTH + MIDDLE_BAR//2)) < (MIDDLE_BAR // 2):
+                        clicked_idx = -1
                     # Inside main.py PLAYING phase click handling:
                     if engine.waiting_for_doubles_roll:
                         engine.roll_dice()
@@ -78,8 +81,10 @@ def main():
         # (The Engine handles the state; we just need to keep the UI in sync)
 
        # C. Drawing
+        # Inside main.py while loop
         view.draw_background()
-        view.draw_points()
+        view.draw_points(board_logic) # Updated this line
+        view.draw_player_pieces(engine, board_logic)
         
         # Pass 'engine' instead of 'engine.board' to draw_player_pieces
         view.draw_player_pieces(engine, board_logic)

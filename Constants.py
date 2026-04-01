@@ -31,6 +31,27 @@ MIDDLE_BAR = 100    # Space for Jail in the center
 MARGIN_X = 60     # Space on the left/right
 MARGIN_Y = 50      # Space on top/bottom
 
+# The width of 6 triangles
+BLOCK_WIDTH = PIPE_WIDTH * 6 
+
+# The total width of the entire board assembly
+TOTAL_BOARD_WIDTH = (BLOCK_WIDTH * 2) + MIDDLE_BAR
+
+# The "Starting X" that centers everything on your screen
+# This ensures equal margins on the left and right
+BOARD_START_X = (SCREEN_WIDTH - TOTAL_BOARD_WIDTH) // 2
+
+# The gap between the left and right sets of triangles
+MIDDLE_BAR_WIDTH = 100 
+
+# The total width of the two triangle blocks + the bar
+# Assuming 12 triangles total across the top, 6 on each side
+BOARD_CONTENT_WIDTH = (PIPE_WIDTH * 12) + MIDDLE_BAR_WIDTH
+
+# This is the ONLY offset we use to center everything
+# If the board is being cut off on the left, this number needs to be positive
+HORIZONTAL_OFFSET = 0
+
 def generate_board_coords():
     """
     Calculates the base (x, y) for all 24 points.

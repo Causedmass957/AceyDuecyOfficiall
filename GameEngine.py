@@ -204,25 +204,36 @@ class GameEngine:
         print(f"Turn passed to Player {self.current_player}")
 
     def select_piece(self, player_id, index):
-        """Checks if the clicked index contains the player's piece."""
-        # 1. Handle "Clicking nothing" immediately
+        """Validates if a piece can be selected based on game rules."""
         if index is None:
             return False
 
-        # 2. Handle Start Pool (-2)
-        if index == -2:
-            # Check if current player actually has pieces left to move in
-            if self.start_pool[player_id] > 0:
+        # 1. PRIORITY 1: JAIL
+        # If you have pieces in jail, you MUST move them first.
+        if self.jail[player_id] > 0:
+            if index == -1:
+                self.selected_index = -1
+                return True
+            print("Move your piece out of Jail first!")
+            return False
+
+        # 2. PRIORITY 2: START POOL (The rule you just requested)
+        # If pieces are still in the start pool, you cannot move pieces on the board.
+        if self.start_pool[player_id] > 0:
+            if index == -2: # Selecting from start pool
                 self.selected_index = -2
                 return True
-            return False
-        
-        # 3. Handle Board Triangles (0-23)
+            elif 0 <= index < 24: # Trying to select from the board
+                print("You must move all pieces from your Start Pool first!")
+                return False
+
+        # 3. PRIORITY 3: BOARD
+        # If Jail and Start Pool are empty, you can move board pieces freely.
         if 0 <= index < 24:
             if player_id in self.board[index]:
                 self.selected_index = index
                 return True
-            
+
         return False
     
     def attempt_move(self, player_id, start_idx, target_idx):
