@@ -52,7 +52,11 @@ def main():
                     clicked_idx = board_logic.get_index_from_mouse(mouse_pos)
                     if is_clicking_start(mouse_pos, engine.current_player):
                         clicked_idx = -2
-
+                    # Inside main.py PLAYING phase click handling:
+                    if engine.waiting_for_doubles_roll:
+                        engine.roll_dice()
+                        # Don't try to select pieces this click
+                        continue 
                     # B. Selection vs Movement
                     if engine.selected_index is None:
                         if engine.select_piece(engine.current_player, clicked_idx):
@@ -112,51 +116,3 @@ def draw_setup_overlay(screen, font, rolls):
 
 if __name__ == "__main__":
     main()
-
-def attempt_move(self, player_id, start_idx, target_idx):
-        """Processes the move if legal and consumes the die value."""
-        # 1. Basic validation (already handled by select_piece, but good to double check)
-        if start_idx is None or target_idx is None:
-            return False
-
-        # 2. Calculate the 'distance' of the move
-        path = self.get_player_path(player_id)
-        
-        # If moving from start, the 'target_step' in the path is the roll value
-        if start_idx == -2:
-            # We need to find which die value was used to reach target_idx
-            # target_idx is the board index, we need the path index
-            try:
-                move_value = path.index(target_idx) + 1
-            except ValueError:
-                return False
-        else:
-            # Normal board move
-            try:
-                start_step = path.index(start_idx)
-                target_step = path.index(target_idx)
-                move_value = target_step - start_step
-            except ValueError:
-                return False
-
-        # 3. Is this move_value available in our dice?
-        if move_value in self.moves_available:
-            # 4. Perform the logic update
-            if start_idx == -2:
-                self.start_pool[player_id] -= 1
-            else:
-                self.board[start_idx].remove(player_id)
-
-            # Handle Hitting (if 1 enemy piece is there)
-            target_space = self.board[target_idx]
-            if len(target_space) == 1 and target_space[0] != player_id:
-                victim = target_space.pop()
-                self.jail[victim] += 1
-            
-            self.board[target_idx].append(player_id)
-            
-            # 5. Spend the die
-            self.moves_available.remove(move_value)
-            return True
-
-        return False

@@ -2,6 +2,10 @@ import random
 
 class GameEngine:
     def __init__(self, num_players=4):
+        # --- Acey Duecy Attributes ---
+        self.is_acey_duecy_pending = False
+        self.waiting_for_doubles_roll = False
+
         # --- Game State ---
         self.num_players = num_players
         self.phase = "INITIAL_ROLL"  # INITIAL_ROLL, PLAYING, GAME_OVER
@@ -80,19 +84,33 @@ class GameEngine:
     # -------------------------------------------------------------------------
 
     def roll_dice(self):
-        """Main gameplay roll. Handles Doubles and Acey-Deucey triggers."""
+        # If we just finished moving 1 and 2, roll for the doubles
+        if self.waiting_for_doubles_roll:
+            val = random.randint(1, 6)
+            self.moves_available = [val, val, val, val]
+            self.waiting_for_doubles_roll = False
+            self.has_extra_roll = True # They get to roll again after these 4 moves
+            print(f"Acey Duecy Doubles Rolled: {val}s!")
+            return val, val
+
         d1, d2 = random.randint(1, 6), random.randint(1, 6)
-        self.dice_values = [d1, d2]
         
+        # Standard Doubles (11, 22, 33, 44, 55, 66)
         if d1 == d2:
-            self.moves_available = [d1] * 4
+            self.moves_available = [d1, d1, d1, d1]
+            self.has_extra_roll = True # Standard rule: doubles roll again
+            print(f"Standard Doubles: {d1}s")
+            
+        # Acey Duecy (1 and 2)
         elif (d1 == 1 and d2 == 2) or (d1 == 2 and d2 == 1):
             self.moves_available = [1, 2]
-            self.is_acey_deucey = True
-            self.waiting_for_bonus_roll = True
+            self.is_acey_duecy_pending = True
+            print("ACEY DUECY! Move 1 and 2 to unlock your doubles roll.")
+            
         else:
             self.moves_available = [d1, d2]
-        
+            self.has_extra_roll = False
+            
         return d1, d2
 
     def get_player_path(self, player_id):
@@ -165,33 +183,47 @@ class GameEngine:
         pass
 
     def next_turn(self):
-        """Moves to the next player in the counter-clockwise turn_order."""
+        # 1. If they just finished moves 1 and 2
+        if self.is_acey_duecy_pending and not self.moves_available:
+            self.is_acey_duecy_pending = False
+            self.waiting_for_doubles_roll = True
+            # We stay on the current player and they must click to roll their double
+            print("Time to roll your Acey Duecy doubles!")
+            return
+
+        # 2. If they have an extra roll (from doubles or finishing an Acey Duecy)
+        if self.has_extra_roll and not self.moves_available:
+            print(f"Player {self.current_player} rolls again!")
+            self.has_extra_roll = False 
+            return
+
+        # 3. Otherwise, standard CCW rotation
         current_idx = self.turn_order.index(self.current_player)
-        next_idx = (current_idx + 1) % self.num_players
+        next_idx = (current_idx + 1) % len(self.turn_order)
         self.current_player = self.turn_order[next_idx]
-        
-        # Reset turn flags
-        self.is_acey_deucey = False
-        self.waiting_for_bonus_roll = False
-        self.has_extra_roll = False
-        self.moves_available = []
+        print(f"Turn passed to Player {self.current_player}")
 
     def select_piece(self, player_id, index):
-        """Checks if the clicked index contains the player's piece and is moveable."""
-        # 1. Is it the player's piece?
-        if index == -2: # Clicking the Start Pool
-            if self.start_pool[player_id] <= 0: return False
-        elif index >= 0: # Clicking a triangle
-            if player_id not in self.board[index]: return False
-        
-        # 2. Rule Check: If in jail, must select jail (-1)
-        if self.jail[player_id] > 0 and index != -1:
+        """Checks if the clicked index contains the player's piece."""
+        # 1. Handle "Clicking nothing" immediately
+        if index is None:
             return False
 
-        # 3. Success
-        self.selected_index = index
-        # We would calculate valid target indices based on self.moves_available here
-        return True
+        # 2. Handle Start Pool (-2)
+        if index == -2:
+            # Check if current player actually has pieces left to move in
+            if self.start_pool[player_id] > 0:
+                self.selected_index = -2
+                return True
+            return False
+        
+        # 3. Handle Board Triangles (0-23)
+        if 0 <= index < 24:
+            if player_id in self.board[index]:
+                self.selected_index = index
+                return True
+            
+        return False
     
     def attempt_move(self, player_id, start_idx, target_idx):
         """Processes the move if legal and consumes the die value."""
