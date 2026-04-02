@@ -5,10 +5,19 @@ class Renderer:
     def __init__(self, screen):
         self.screen = screen
         self.font = pygame.font.SysFont("Arial", TEXT_SIZE, bold=True)
+        self.big_font = pygame.font.SysFont("Arial", 22, bold=True)
+
+    def draw_player_selection(self):
+        self.screen.fill(BG_COLOR)
+        title = self.font.render("Select Number of Players", True, WHITE)
+        self.screen.blit(title, (SCREEN_WIDTH // 2 - 140, SCREEN_HEIGHT // 2 - 100))
+        for count, rect in SELECTION_BUTTONS.items():
+            pygame.draw.rect(self.screen, GRAY, rect, border_radius=5)
+            txt = self.font.render(str(count), True, WHITE)
+            self.screen.blit(txt, (rect.centerx - 10, rect.centery - 12))
 
     def draw_background(self):
         self.screen.fill(BG_COLOR)
-        # Bar is precisely after the first 6 triangles
         bar_x = BOARD_START_X + BLOCK_WIDTH
         pygame.draw.rect(self.screen, BLACK, (bar_x, 0, MIDDLE_BAR, SCREEN_HEIGHT))
 
@@ -17,132 +26,87 @@ class Renderer:
             final_x = board_logic.get_x_with_gap(i)
             base_y = BOARD_COORDS[i][1]
             color = BOARD_LIGHT if i % 2 == 0 else BOARD_DARK
-            
-            # Triangle points
             if i <= 11: pts = [(final_x - 40, base_y), (final_x + 40, base_y), (final_x, base_y + 300)]
             else: pts = [(final_x - 40, base_y), (final_x + 40, base_y), (final_x, base_y - 300)]
             pygame.draw.polygon(self.screen, color, pts)
 
     def draw_jail(self, engine):
-        # Center of the bar
-        center_x = BOARD_START_X + BLOCK_WIDTH + (MIDDLE_BAR // 2)
         for p_id, count in engine.jail.items():
-            if count <= 0: continue
-            color = PLAYER_COLORS[p_id]
-            base_y = (SCREEN_HEIGHT // 5) * p_id 
-            
-            if engine.selected_index == -1 and engine.current_player == p_id:
-                pygame.draw.circle(self.screen, (255, 255, 0), (center_x, base_y), PIECE_RADIUS + 5, 3)
-
-            pygame.draw.circle(self.screen, color, (center_x, base_y), PIECE_RADIUS)
-            pygame.draw.circle(self.screen, (255,255,255), (center_x, base_y), PIECE_RADIUS, 2)
+            if count > 0:
+                color = PLAYER_COLORS[p_id]
+                x, y = SCREEN_WIDTH // 2, 200 + (p_id * 60)
+                pygame.draw.circle(self.screen, color, (x, y), PIECE_RADIUS)
+                if count > 1:
+                    txt = self.font.render(f"x{count}", True, WHITE)
+                    self.screen.blit(txt, (x + 25, y - 10))
 
     def draw_player_pieces(self, engine, board_logic):
-        """
-        Pass the WHOLE engine so we can check engine.selected_index
-        """
-        for i, occupants in enumerate(engine.board):
-            if not occupants:
-                continue
-            
-            player_id = occupants[0]
-            count = len(occupants)
-            color = PLAYER_COLORS[player_id]
-            display_count = min(count, MAX_VISUAL_STACK)
-            
-            for stack_idx in range(display_count):
-                pos = board_logic.get_piece_coordinates(i, stack_idx)
-                
-                # --- FIXED SELECTION GLOW ---
-                # We check if this specific triangle (i) is what the engine has selected
-                if engine.selected_index == i and stack_idx == display_count - 1:
-                    pygame.draw.circle(self.screen, (255, 255, 0), pos, PIECE_RADIUS + 5, 3)
-
-                pygame.draw.circle(self.screen, color, pos, PIECE_RADIUS)
-                pygame.draw.circle(self.screen, WHITE, pos, PIECE_RADIUS, 2)
-
-            if count > MAX_VISUAL_STACK:
-                text_surf = self.font.render(f"{count}", True, WHITE)
-                last_pos = board_logic.get_piece_coordinates(i, display_count - 1)
-                text_rect = text_surf.get_rect(center=last_pos)
-                self.screen.blit(text_surf, text_rect)
+        for idx, occupants in enumerate(engine.board):
+            counts = {}
+            for p in occupants: counts[p] = counts.get(p, 0) + 1
+            for p_id, count in counts.items():
+                for s in range(min(count, MAX_VISUAL_STACK)):
+                    pos = board_logic.get_piece_coordinates(idx, s)
+                    pygame.draw.circle(self.screen, PLAYER_COLORS[p_id], pos, PIECE_RADIUS)
+                    if s == MAX_VISUAL_STACK - 1 and count > MAX_VISUAL_STACK:
+                        txt = self.font.render(f"x{count}", True, WHITE)
+                        self.screen.blit(txt, (pos[0] - 10, pos[1] - 10))
 
     def draw_start_pools(self, engine):
-        """Move this INSIDE the class and indent it!"""
         for p_id, count in engine.start_pool.items():
-            if count <= 0: continue
-            
-            base_x, base_y = START_AREAS[p_id]
-            color = PLAYER_COLORS[p_id]
-            
-            # Draw Selection Glow for Start Pool
-            if engine.selected_index == -2 and engine.current_player == p_id:
-                pygame.draw.circle(self.screen, (255, 255, 0), (base_x, base_y), PIECE_RADIUS + 10, 3)
-
-            display_count = min(count, 3)
-            for i in range(display_count):
-                pos = (base_x, base_y + (i * 10))
-                pygame.draw.circle(self.screen, color, pos, PIECE_RADIUS)
-                pygame.draw.circle(self.screen, WHITE, pos, PIECE_RADIUS, 2)
-            
-            if count > 1:
-                text_surf = self.font.render(f"{count}", True, WHITE)
-                self.screen.blit(text_surf, (base_x - 10, base_y - 30))
+            if count > 0:
+                x, y = START_AREAS[p_id]
+                pygame.draw.circle(self.screen, PLAYER_COLORS[p_id], (x, y), 40, 2)
+                txt = self.font.render(str(count), True, PLAYER_COLORS[p_id])
+                self.screen.blit(txt, (x - 10, y - 10))
 
     def draw_ui(self, engine):
-        # 1. Safety Check: Make sure there is actually a player active
         if engine.current_player is None:
             return
 
-        # 2. Safety Check: Make sure the player exists in the pool dictionary
-        if engine.current_player in engine.start_pool:
-            if engine.start_pool[engine.current_player] > 0:
-                # Use a slightly softer color for the "Must enter" message
-                msg = self.font.render("Must enter all pieces from Start!", True, (200, 80, 80))
-                # Position it near the bottom center
-                msg_rect = msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50))
-                self.screen.blit(msg, msg_rect)
-                
-        # Draw current dice
-        dice_text = f"Dice: {engine.moves_available}"
-        dice_surf = self.font.render(dice_text, True, WHITE)
-        self.screen.blit(dice_surf, (SCREEN_WIDTH // 2 - 50, SCREEN_HEIGHT - 80))
+        # 1. NEW: PROMINENT TURN INDICATOR
+        turn_color = PLAYER_COLORS[engine.current_player]
+        turn_text = f"PLAYER {engine.current_player}'S TURN"
+        turn_surf = self.big_font.render(turn_text, True, turn_color)
+        turn_rect = turn_surf.get_rect(center=(SCREEN_WIDTH // 2, 50))
+        
+        # Draw a subtle backing for the text
+        bg_rect = turn_rect.inflate(40, 10)
+        pygame.draw.rect(self.screen, (20, 20, 20), bg_rect, border_radius=5)
+        self.screen.blit(turn_surf, turn_rect)
 
-        status_text = f"Phase: {engine.phase} | Current Player: {engine.current_player}"
-        surf = self.font.render(status_text, True, WHITE)
-        self.screen.blit(surf, (20, SCREEN_HEIGHT - 40))
-        
-        if engine.start_pool[engine.current_player] > 0:
-            msg = self.font.render("Must enter all pieces from Start!", True, (255, 100, 100))
-            self.screen.blit(msg, (500, SCREEN_HEIGHT - 40))
-        
-        # Draw the Roll/Pass Button
-        button_color = (100, 255, 100) if not engine.moves_available else (200, 200, 200)
+        # 2. HIGHLIGHT CURRENT PLAYER CORNER
+        sx, sy = START_AREAS[engine.current_player]
+        pygame.draw.circle(self.screen, turn_color, (sx, sy), 55, 3)
+
+        # 3. REVISED BUTTON LOGIC
+        if not engine.moves_available:
+            label = "ROLL"
+            button_color = (46, 204, 113) # Bright Green
+        else:
+            label = "PASS"
+            button_color = (149, 165, 166) # Grey-ish
+            
         pygame.draw.rect(self.screen, button_color, ROLL_BUTTON_RECT, border_radius=10)
-        
-        label = "ROLL" if not engine.moves_available else "PASS"
-        text = self.font.render(label, True, BLACK)
-        self.screen.blit(text, (ROLL_BUTTON_RECT.centerx - 25, ROLL_BUTTON_RECT.centery - 12))
-      
+        btn_text = self.font.render(label, True, BLACK)
+        text_rect = btn_text.get_rect(center=ROLL_BUTTON_RECT.center)
+        self.screen.blit(btn_text, text_rect)
+
+        # 4. DICE & PHASE INFO
+        dice_text = f"Moves: {engine.moves_available}" if engine.moves_available else "Roll the dice!"
+        dice_surf = self.font.render(dice_text, True, WHITE)
+        self.screen.blit(dice_surf, (SCREEN_WIDTH // 2 - 60, SCREEN_HEIGHT // 2 + 30))
+
+        # Entry Requirement Warning
+        if engine.start_pool.get(engine.current_player, 0) > 0:
+            msg = self.font.render("MUST ENTER PIECES FROM START", True, (231, 76, 60))
+            msg_rect = msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 60))
+            self.screen.blit(msg, msg_rect)
 
     def draw_initial_winner_screen(self, engine):
-        """Draws an overlay showing the initial rolls and the winner."""
-        # Darken the background
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180)) 
+        overlay.fill((0, 0, 0, 180))
         self.screen.blit(overlay, (0, 0))
-
-        # Show all rolls so Player 4's roll is visible
         for p_id, roll in engine.player_rolls.items():
-            color = PLAYER_COLORS[p_id]
-            txt = self.font.render(f"Player {p_id} rolled: {roll}", True, color)
+            txt = self.font.render(f"Player {p_id} rolled: {roll}", True, PLAYER_COLORS[p_id])
             self.screen.blit(txt, (SCREEN_WIDTH // 2 - 100, 150 + (p_id * 40)))
-
-        # Highlight the winner
-        win_msg = self.font.render(f"PLAYER {engine.current_player} STARTS!", True, WHITE)
-        prompt = self.font.render("Click anywhere to begin the match", True, (200, 200, 200))
-        
-        self.screen.blit(win_msg, (SCREEN_WIDTH // 2 - 120, SCREEN_HEIGHT // 2 + 50))
-        self.screen.blit(prompt, (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2 + 100))
-    
-    
