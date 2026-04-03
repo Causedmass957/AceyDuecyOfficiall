@@ -26,8 +26,12 @@ class Renderer:
             final_x = board_logic.get_x_with_gap(i)
             base_y = BOARD_COORDS[i][1]
             color = BOARD_LIGHT if i % 2 == 0 else BOARD_DARK
-            if i <= 11: pts = [(final_x - 40, base_y), (final_x + 40, base_y), (final_x, base_y + 300)]
-            else: pts = [(final_x - 40, base_y), (final_x + 40, base_y), (final_x, base_y - 300)]
+
+            if i <= 11:
+                pts = [(final_x - 40, base_y), (final_x + 40, base_y), (final_x, base_y + 300)]
+            else:
+                pts = [(final_x - 40, base_y), (final_x + 40, base_y), (final_x, base_y - 300)]
+
             pygame.draw.polygon(self.screen, color, pts)
 
     def draw_jail(self, engine):
@@ -35,7 +39,13 @@ class Renderer:
             if count > 0:
                 color = PLAYER_COLORS[p_id]
                 x, y = SCREEN_WIDTH // 2, 200 + (p_id * 60)
+
                 pygame.draw.circle(self.screen, color, (x, y), PIECE_RADIUS)
+
+                # Highlight selected jail piece
+                if engine.selected_index == -1 and engine.current_player == p_id:
+                    pygame.draw.circle(self.screen, WHITE, (x, y), PIECE_RADIUS + 6, 3)
+
                 if count > 1:
                     txt = self.font.render(f"x{count}", True, WHITE)
                     self.screen.blit(txt, (x + 25, y - 10))
@@ -43,11 +53,20 @@ class Renderer:
     def draw_player_pieces(self, engine, board_logic):
         for idx, occupants in enumerate(engine.board):
             counts = {}
-            for p in occupants: counts[p] = counts.get(p, 0) + 1
+            for p in occupants:
+                counts[p] = counts.get(p, 0) + 1
+
             for p_id, count in counts.items():
                 for s in range(min(count, MAX_VISUAL_STACK)):
                     pos = board_logic.get_piece_coordinates(idx, s)
+
+                    # Draw checker
                     pygame.draw.circle(self.screen, PLAYER_COLORS[p_id], pos, PIECE_RADIUS)
+
+                    # Highlight selected point for current player
+                    if idx == engine.selected_index and p_id == engine.current_player:
+                        pygame.draw.circle(self.screen, WHITE, pos, PIECE_RADIUS + 6, 3)
+
                     if s == MAX_VISUAL_STACK - 1 and count > MAX_VISUAL_STACK:
                         txt = self.font.render(f"x{count}", True, WHITE)
                         self.screen.blit(txt, (pos[0] - 10, pos[1] - 10))
@@ -56,7 +75,13 @@ class Renderer:
         for p_id, count in engine.start_pool.items():
             if count > 0:
                 x, y = START_AREAS[p_id]
+
                 pygame.draw.circle(self.screen, PLAYER_COLORS[p_id], (x, y), 40, 2)
+
+                # Highlight selected start pool
+                if engine.selected_index == -2 and engine.current_player == p_id:
+                    pygame.draw.circle(self.screen, WHITE, (x, y), 48, 3)
+
                 txt = self.font.render(str(count), True, PLAYER_COLORS[p_id])
                 self.screen.blit(txt, (x - 10, y - 10))
 
@@ -64,40 +89,47 @@ class Renderer:
         if engine.current_player is None:
             return
 
-        # 1. NEW: PROMINENT TURN INDICATOR
         turn_color = PLAYER_COLORS[engine.current_player]
         turn_text = f"PLAYER {engine.current_player}'S TURN"
         turn_surf = self.big_font.render(turn_text, True, turn_color)
         turn_rect = turn_surf.get_rect(center=(SCREEN_WIDTH // 2, 50))
-        
-        # Draw a subtle backing for the text
+
         bg_rect = turn_rect.inflate(40, 10)
         pygame.draw.rect(self.screen, (20, 20, 20), bg_rect, border_radius=5)
         self.screen.blit(turn_surf, turn_rect)
 
-        # 2. HIGHLIGHT CURRENT PLAYER CORNER
+        # Current player corner outline
         sx, sy = START_AREAS[engine.current_player]
         pygame.draw.circle(self.screen, turn_color, (sx, sy), 55, 3)
 
-        # 3. REVISED BUTTON LOGIC
         if not engine.moves_available:
             label = "ROLL"
-            button_color = (46, 204, 113) # Bright Green
+            button_color = (46, 204, 113)
         else:
             label = "PASS"
-            button_color = (149, 165, 166) # Grey-ish
-            
+            button_color = (149, 165, 166)
+
         pygame.draw.rect(self.screen, button_color, ROLL_BUTTON_RECT, border_radius=10)
         btn_text = self.font.render(label, True, BLACK)
         text_rect = btn_text.get_rect(center=ROLL_BUTTON_RECT.center)
         self.screen.blit(btn_text, text_rect)
 
-        # 4. DICE & PHASE INFO
         dice_text = f"Moves: {engine.moves_available}" if engine.moves_available else "Roll the dice!"
         dice_surf = self.font.render(dice_text, True, WHITE)
         self.screen.blit(dice_surf, (SCREEN_WIDTH // 2 - 60, SCREEN_HEIGHT // 2 + 30))
 
-        # Entry Requirement Warning
+        # Optional selection readout
+        if engine.selected_index is not None:
+            if engine.selected_index == -2:
+                sel_text = "Selected: START"
+            elif engine.selected_index == -1:
+                sel_text = "Selected: JAIL"
+            else:
+                sel_text = f"Selected: POINT {engine.selected_index}"
+
+            sel_surf = self.font.render(sel_text, True, WHITE)
+            self.screen.blit(sel_surf, (SCREEN_WIDTH // 2 - 80, SCREEN_HEIGHT // 2 - 20))
+
         if engine.start_pool.get(engine.current_player, 0) > 0:
             msg = self.font.render("MUST ENTER PIECES FROM START", True, (231, 76, 60))
             msg_rect = msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 60))
@@ -107,6 +139,7 @@ class Renderer:
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         self.screen.blit(overlay, (0, 0))
+
         for p_id, roll in engine.player_rolls.items():
             txt = self.font.render(f"Player {p_id} rolled: {roll}", True, PLAYER_COLORS[p_id])
             self.screen.blit(txt, (SCREEN_WIDTH // 2 - 100, 150 + (p_id * 40)))
