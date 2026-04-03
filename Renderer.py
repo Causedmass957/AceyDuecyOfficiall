@@ -116,7 +116,7 @@ class Renderer:
 
         dice_text = f"Moves: {engine.moves_available}" if engine.moves_available else "Roll the dice!"
         dice_surf = self.font.render(dice_text, True, WHITE)
-        self.screen.blit(dice_surf, (SCREEN_WIDTH // 2 - 60, SCREEN_HEIGHT // 2 + 30))
+        self.screen.blit(dice_surf, (SCREEN_WIDTH // 2 - 120, SCREEN_HEIGHT // 2 + 30))
 
         # Optional selection readout
         if engine.selected_index is not None:

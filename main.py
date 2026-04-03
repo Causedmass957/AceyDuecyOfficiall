@@ -106,30 +106,32 @@ def handle_playing_click(mouse_pos, engine, board_logic):
             print(f"Selected: {clicked_idx}")
         return
 
-    # Clicking same selected point toggles deselect
+    # Double click selected checker = attempt to score off board
     if clicked_idx == engine.selected_index:
+        if engine.attempt_move(engine.current_player, engine.selected_index, 24):
+            print(f"Scored from: {clicked_idx}")
+
+            if not engine.moves_available:
+                engine.next_turn()
+            else:
+                engine.selected_index = None
+            return
+
         engine.selected_index = None
         print("Deselected piece")
         return
 
-    # IMPORTANT: try move BEFORE reselection
+    # Try moving first
     if engine.attempt_move(engine.current_player, engine.selected_index, clicked_idx):
         print(f"Moved to: {clicked_idx}")
 
         if not engine.moves_available:
             engine.next_turn()
-            print(
-                f"NEXT TURN -> current_player={engine.current_player}, "
-                f"moves={engine.moves_available}, "
-                f"acey={engine.is_acey_duecy_pending}, "
-                f"waiting_doubles={engine.waiting_for_doubles_roll}, "
-                f"extra_roll={engine.has_extra_roll}"
-            )
         else:
             engine.selected_index = None
         return
 
-    # Only reselect if move failed
+    # If move failed, try switching selection
     if engine.select_piece(engine.current_player, clicked_idx):
         print(f"Reselected: {clicked_idx}")
         return

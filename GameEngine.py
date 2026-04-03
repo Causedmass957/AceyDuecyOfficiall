@@ -111,21 +111,23 @@ class GameEngine:
         return []
 
     def is_legal_move(self, player_id, start_pos, move_value):
-        # If jailed, player must move from jail only.
+        # Jail has highest priority
         if self.jail[player_id] > 0 and start_pos != -1:
             return False
 
-        # If pieces still remain in start, player cannot move other board pieces
-        # except the checker they just entered this turn.
+        # If pieces are still in start, player may only:
+        # - enter from start
+        # - continue moving the checker they just entered this turn
         if self.start_pool[player_id] > 0 and start_pos >= 0:
             if start_pos != self.last_entered_index:
                 return False
 
         path = self.get_player_path(player_id)
 
-        if start_pos == -1:          # coming out of jail
+        # Figure out destination step
+        if start_pos == -1:          # leaving jail
             target_step = move_value - 1
-        elif start_pos == -2:        # coming out of start
+        elif start_pos == -2:        # leaving start
             target_step = move_value - 1
         else:
             try:
@@ -134,7 +136,14 @@ class GameEngine:
             except ValueError:
                 return False
 
-        # Bearing off requires exact roll
+        # If this is a checker already in the scoring zone, it cannot move
+        # at all until all of the player's pieces are in the scoring zone.
+        if start_pos >= 0:
+            scoring_zone = set(path[18:])
+            if start_pos in scoring_zone and not self.all_pieces_in_scoring_zone(player_id):
+                return False
+
+        # Bearing off requires exact roll and all pieces in scoring zone
         if target_step >= 24:
             if target_step == 24 and self.can_bear_off(player_id):
                 return True
@@ -143,24 +152,13 @@ class GameEngine:
         target_idx = path[target_step]
         occupants = self.board[target_idx]
 
-        # Cannot land on opponent point with 2+ opposing checkers
+        # Cannot land on an opponent point occupied by 2 or more enemy pieces
         if len(occupants) >= 2 and occupants[0] != player_id:
             return False
 
         return True
 
-    def can_bear_off(self, player_id):
-        if self.start_pool[player_id] > 0 or self.jail[player_id] > 0:
-            return False
-
-        path = self.get_player_path(player_id)
-        scoring_zone = path[18:]  # final quadrant / final 6 points
-
-        for idx, point in enumerate(self.board):
-            if player_id in point and idx not in scoring_zone:
-                return False
-
-        return True
+    def can_bear_off(self, player_id): return self.all_pieces_in_scoring_zone(player_id)
 
     def has_legal_moves(self, player_id):
         if not self.moves_available:
@@ -331,4 +329,17 @@ class GameEngine:
 
         self.moves_available = []
         self.next_turn(forfeited=True)
+        return True
+    
+    def all_pieces_in_scoring_zone(self, player_id):
+        if self.start_pool[player_id] > 0 or self.jail[player_id] > 0:
+            return False
+
+        path = self.get_player_path(player_id)
+        scoring_zone = set(path[18:])
+
+        for idx, point in enumerate(self.board):
+            if player_id in point and idx not in scoring_zone:
+                return False
+
         return True
