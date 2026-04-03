@@ -80,6 +80,45 @@ class ProfileManager:
 
             conn.commit()
             return True
+    def delete_profile(self, name):
+        """
+        Deletes a player profile and all associated stats.
+
+        Returns:
+            True  -> profile was deleted
+            False -> profile not found
+        """
+        with self._connect() as conn:
+            cursor = conn.cursor()
+
+            # Get player ID first
+            cursor.execute(
+                "SELECT id FROM players WHERE name = ?",
+                (name,)
+            )
+
+            row = cursor.fetchone()
+
+            if not row:
+                return False
+
+            player_id = row[0]
+
+            # Delete stats first because of foreign key relationship
+            cursor.execute(
+                "DELETE FROM player_stats WHERE player_id = ?",
+                (player_id,)
+            )
+
+            # Delete player record
+            cursor.execute(
+                "DELETE FROM players WHERE id = ?",
+                (player_id,)
+            )
+
+            conn.commit()
+
+            return True
 
     def profile_exists(self, name):
         with self._connect() as conn:

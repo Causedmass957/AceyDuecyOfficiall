@@ -25,6 +25,11 @@ class GameEngine:
 
         self.selected_index = None
 
+        self.game_over = False
+        self.winner_id = None
+        self.final_standings = []
+        self.required_to_win = 15
+
         # Tracks the most recent checker entered from start or jail this turn.
         # Needed for your rule: if pieces remain in start, the player may only
         # continue moving the piece they just entered.
@@ -305,9 +310,13 @@ class GameEngine:
 
         self.moves_available.remove(move_value)
         self._increment_stat(player_id, "moves_made", 1)
+        if target_idx == 24:
+            self.check_game_over()
         return True
 
     def next_turn(self, forfeited=False):
+        if self.game_over:
+            return
         # If the player completed the whole roll normally, allow AD bonus or extra roll.
         # If they forfeited because they were stuck, they lose those bonuses.
         if not forfeited:
@@ -335,6 +344,8 @@ class GameEngine:
         self.last_entered_index = None
 
     def pass_turn(self):
+        if self.game_over:
+            return False
         # Only pass when no legal moves remain.
         if self.has_legal_moves(self.current_player):
             return False
@@ -363,6 +374,9 @@ class GameEngine:
     def set_player_profiles(self, player_profiles):
         self.player_profiles = player_profiles
 
+    def get_player_name(self, player_id):
+        return self.player_profiles.get(player_id, f"Player {player_id}")
+
     def _get_profile_name(self, player_id):
         return self.player_profiles.get(player_id)
 
@@ -375,3 +389,24 @@ class GameEngine:
             return
 
         self.profile_manager.increment_stat(profile_name, stat_name, amount)
+
+    def check_game_over(self):
+        for player_id, count in self.finished_pool.items():
+            if count >= 15:
+                self.game_over = True
+                self.winner_id = player_id
+                self.final_standings = self.get_final_standings()
+                return True
+        return False
+    
+    def get_final_standings(self):
+        standings = []
+
+        for player_id in range(1, self.num_players + 1):
+            finished = self.finished_pool.get(player_id, 0)
+            standings.append((player_id, finished))
+
+        # Higher finished count = better placing
+        standings.sort(key=lambda item: item[1], reverse=True)
+
+        return [player_id for player_id, _ in standings]
