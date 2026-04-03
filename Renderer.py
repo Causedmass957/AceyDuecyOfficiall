@@ -18,7 +18,7 @@ class Renderer:
 
     def draw_background(self):
         self.screen.fill(BG_COLOR)
-        bar_x = BOARD_START_X + BLOCK_WIDTH
+        bar_x = BOARD_START_X + BLOCK_WIDTH + 20
         pygame.draw.rect(self.screen, BLACK, (bar_x, 0, MIDDLE_BAR, SCREEN_HEIGHT))
 
     def draw_points(self, board_logic):
@@ -116,7 +116,8 @@ class Renderer:
 
         dice_text = f"Moves: {engine.moves_available}" if engine.moves_available else "Roll the dice!"
         dice_surf = self.font.render(dice_text, True, WHITE)
-        self.screen.blit(dice_surf, (SCREEN_WIDTH // 2 - 120, SCREEN_HEIGHT // 2 + 30))
+        dice_rect = dice_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 95))
+        self.screen.blit(dice_surf, dice_rect)
 
         # Optional selection readout
         if engine.selected_index is not None:
@@ -128,11 +129,11 @@ class Renderer:
                 sel_text = f"Selected: POINT {engine.selected_index}"
 
             sel_surf = self.font.render(sel_text, True, WHITE)
-            self.screen.blit(sel_surf, (SCREEN_WIDTH // 2 - 80, SCREEN_HEIGHT // 2 - 20))
+            self.screen.blit(sel_surf, (40, SCREEN_HEIGHT - 100))
 
         if engine.start_pool.get(engine.current_player, 0) > 0:
             msg = self.font.render("MUST ENTER PIECES FROM START", True, (231, 76, 60))
-            msg_rect = msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 60))
+            msg_rect = msg.get_rect(center=(SCREEN_WIDTH // 2, 10))
             self.screen.blit(msg, msg_rect)
 
     def draw_initial_winner_screen(self, engine):

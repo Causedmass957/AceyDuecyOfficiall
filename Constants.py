@@ -14,7 +14,7 @@ BLACK = (0, 0, 0)
 GRAY = (100, 100, 100)
 
 # --- UI Button Settings ---
-ROLL_BUTTON_RECT = pygame.Rect(SCREEN_WIDTH // 2 - 60, SCREEN_HEIGHT // 2 + 75, 120, 50)
+ROLL_BUTTON_RECT = pygame.Rect(SCREEN_WIDTH // 2 - 60, SCREEN_HEIGHT - 70, 120, 50)
 
 # Player Selection UI
 SELECTION_BUTTONS = {
