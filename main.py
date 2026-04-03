@@ -4,6 +4,24 @@ from Constants import *
 from GameEngine import GameEngine
 from Board import Board
 from Renderer import Renderer
+from ProfileManager import ProfileManager
+
+profile_manager = ProfileManager()
+engine = GameEngine()
+
+engine.set_profile_manager(profile_manager)
+
+player_profiles = {
+    1: "Arnie",
+    2: "Danny",
+    3: "Zach",
+    4: "GreenPlayer"
+}
+
+for name in player_profiles.values():
+    profile_manager.create_profile(name)
+
+engine.set_player_profiles(player_profiles)
 
 
 def main():

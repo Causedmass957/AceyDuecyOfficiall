@@ -105,11 +105,14 @@ class ProfileManager:
                     s.games_played,
                     s.wins,
                     s.losses,
+                    s.second_place,
+                    s.third_place,
                     s.acey_duecy_rolls,
                     s.doubles_rolled,
                     s.times_jailed,
                     s.times_sent_to_jail,
                     s.times_blocked,
+                    s.times_skunked,
                     s.pieces_scored,
                     s.total_turns,
                     s.moves_made,
@@ -132,9 +135,9 @@ class ProfileManager:
 
             keys = [
                 "name", "created_at", "last_played_at",
-                "games_played", "wins", "losses",
+                "games_played", "wins", "losses", "second_place", "third_place",
                 "acey_duecy_rolls", "doubles_rolled",
-                "times_jailed", "times_sent_to_jail", "times_blocked",
+                "times_jailed", "times_sent_to_jail", "times_blocked", "times_skunked",
                 "pieces_scored", "total_turns", "moves_made",
                 "jail_exits", "captures", "pieces_entered_from_start",
                 "bonus_rolls_earned", "bonus_rolls_forfeited",
@@ -154,12 +157,12 @@ class ProfileManager:
 
     def increment_stat(self, name, stat_name, amount=1):
         allowed_stats = {
-            "games_played", "wins", "losses",
+            "games_played", "wins", "losses", "second_place", "third_place",
             "acey_duecy_rolls", "doubles_rolled",
-            "times_jailed", "times_sent_to_jail", "times_blocked",
+            "times_jailed", "times_sent_to_jail", "times_blocked", "times_skunked",
             "pieces_scored", "total_turns", "moves_made",
-            "jail_exits", "captures", "pieces_entered_from_start",
-            "bonus_rolls_earned", "bonus_rolls_forfeited",
+            "jail_exits", "captures", "bonus_rolls_earned", 
+            "bonus_rolls_forfeited",
             "longest_block_zone_created",
             "block_zones_created_7_plus",
             "block_zones_faced_7_plus"

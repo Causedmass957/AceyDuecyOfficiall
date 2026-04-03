@@ -1,7 +1,10 @@
 import random
+import ProfileManager
 
 class GameEngine:
     def __init__(self, num_players=4):
+        self.profile_manager = None
+        self.player_profiles = {}
         self.phase = "PLAYER_SELECTION"
         self.num_players = num_players
 
@@ -75,6 +78,7 @@ class GameEngine:
             self.has_extra_roll = True
             self.selected_index = None
             self.last_entered_index = None
+            self._increment_stat(self.current_player, "bonus_rolls_earned")
             return val, val
 
         d1, d2 = random.randint(1, 6), random.randint(1, 6)
@@ -83,10 +87,13 @@ class GameEngine:
             self.moves_available = [d1, d1, d1, d1]
             self.has_extra_roll = True
             self.is_acey_duecy_pending = False
+            self._increment_stat(self.current_player, "doubles_rolled")
+            self._increment_stat(self.current_player, "bonus_rolls_earned")
         elif (d1 == 1 and d2 == 2) or (d1 == 2 and d2 == 1):
             self.moves_available = [1, 2]
             self.is_acey_duecy_pending = True
             self.has_extra_roll = False
+            self._increment_stat(self.current_player, "acey_duecy_rolls")
         else:
             self.moves_available = [d1, d2]
             self.has_extra_roll = False
@@ -270,12 +277,14 @@ class GameEngine:
             self.start_pool[player_id] -= 1
         elif start_idx == -1:
             self.jail[player_id] -= 1
+            self._increment_stat(player_id, "jail_exits", 1)            
         else:
             self.board[start_idx].remove(player_id)
 
         # Apply destination
         if target_idx == 24:
             self.finished_pool[player_id] += 1
+            self._increment_stat(player_id, "pieces_scored", 1)
             if start_idx == self.last_entered_index:
                 self.last_entered_index = None
         else:
@@ -285,6 +294,8 @@ class GameEngine:
             if len(target_space) == 1 and target_space[0] != player_id:
                 victim = target_space.pop()
                 self.jail[victim] += 1
+                self._increment_stat(player_id, "times_sent_to_jail", 1)
+                self._increment_stat(victim, "times_jailed", 1)
 
             self.board[target_idx].append(player_id)
 
@@ -293,6 +304,7 @@ class GameEngine:
                 self.last_entered_index = target_idx
 
         self.moves_available.remove(move_value)
+        self._increment_stat(player_id, "moves_made", 1)
         return True
 
     def next_turn(self, forfeited=False):
@@ -326,7 +338,8 @@ class GameEngine:
         # Only pass when no legal moves remain.
         if self.has_legal_moves(self.current_player):
             return False
-
+        
+        self._increment_stat(self.current_player, "times_blocked", 1)
         self.moves_available = []
         self.next_turn(forfeited=True)
         return True
@@ -343,3 +356,22 @@ class GameEngine:
                 return False
 
         return True
+    
+    def set_profile_manager(self, profile_manager):
+        self.profile_manager = profile_manager
+
+    def set_player_profiles(self, player_profiles):
+        self.player_profiles = player_profiles
+
+    def _get_profile_name(self, player_id):
+        return self.player_profiles.get(player_id)
+
+    def _increment_stat(self, player_id, stat_name, amount=1):
+        if self.profile_manager is None:
+            return
+
+        profile_name = self._get_profile_name(player_id)
+        if not profile_name:
+            return
+
+        self.profile_manager.increment_stat(profile_name, stat_name, amount)
