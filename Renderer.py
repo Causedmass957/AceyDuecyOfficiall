@@ -212,7 +212,7 @@ class Renderer:
         # ----------------------------
         if engine.start_pool.get(engine.current_player, 0) > 0:
             msg = self.font.render("MUST ENTER PIECES FROM START", True, (231, 76, 60))
-            msg_rect = msg.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 130))
+            msg_rect = msg.get_rect(center=(SCREEN_WIDTH // 2, 20))
             self.screen.blit(msg, msg_rect)
 
     # ============================================================

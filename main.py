@@ -211,7 +211,7 @@ def draw_game(screen, engine, board_logic, view):
     view.draw_ui(engine)
 
     if engine.phase == "INITIAL_ROLL":
-        draw_setup_overlay(screen, view.font, engine.player_rolls)
+        draw_setup_overlay(screen, view.font, engine)
     elif engine.phase == "SHOW_INITIAL_WINNER":
         view.draw_initial_winner_screen(engine)
 
@@ -225,14 +225,15 @@ def is_clicking_start(mouse_pos, player_id):
     return dist < 40
 
 
-def draw_setup_overlay(screen, font, rolls):
+def draw_setup_overlay(screen, font, engine):
     y_offset = 200
     title = font.render("Initial Roll Phase - Click Corners to Roll", True, WHITE)
     screen.blit(title, (SCREEN_WIDTH // 2 - 200, 150))
 
-    for p_id, total in rolls.items():
-        txt = font.render(f"Player {p_id}: {total}", True, PLAYER_COLORS[p_id])
-        screen.blit(txt, (SCREEN_WIDTH // 2 - 50, y_offset))
+    for p_id, total in engine.player_rolls.items():
+        player_name = engine.get_player_name(p_id)
+        txt = font.render(f"{player_name}: {total}", True, PLAYER_COLORS[p_id])
+        screen.blit(txt, (SCREEN_WIDTH // 2 - 100, y_offset))
         y_offset += 40
 
 
