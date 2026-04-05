@@ -29,6 +29,9 @@ class ProfileManager:
                     games_played INTEGER NOT NULL DEFAULT 0,
                     wins INTEGER NOT NULL DEFAULT 0,
                     losses INTEGER NOT NULL DEFAULT 0,
+                    second_place NOT NULL DEFAULT 0,
+                    third_place NOT NULL DEFAULT 0,
+                    fourth_place NOT NULL DEFAULT 0,                    
                     acey_duecy_rolls INTEGER NOT NULL DEFAULT 0,
                     doubles_rolled INTEGER NOT NULL DEFAULT 0,
                     times_jailed INTEGER NOT NULL DEFAULT 0,
@@ -146,6 +149,7 @@ class ProfileManager:
                     s.losses,
                     s.second_place,
                     s.third_place,
+                    s.fourth_place,
                     s.acey_duecy_rolls,
                     s.doubles_rolled,
                     s.times_jailed,
@@ -174,7 +178,7 @@ class ProfileManager:
 
             keys = [
                 "name", "created_at", "last_played_at",
-                "games_played", "wins", "losses", "second_place", "third_place",
+                "games_played", "wins", "losses", "second_place", "third_place", "fourth_place",
                 "acey_duecy_rolls", "doubles_rolled",
                 "times_jailed", "times_sent_to_jail", "times_blocked", "times_skunked",
                 "pieces_scored", "total_turns", "moves_made",
