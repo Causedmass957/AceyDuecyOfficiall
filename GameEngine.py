@@ -130,9 +130,15 @@ class GameEngine:
         # If pieces are still in start, player may only:
         # - enter from start
         # - continue moving the checker they just entered this turn
-        if self.start_pool[player_id] > 0 and start_pos >= 0:
-            if start_pos != self.last_entered_index:
-                return False
+        if start_pos >= 0:
+            scoring_zone = set(path[18:])
+
+            # A checker already in the scoring zone cannot move unless:
+            # 1. all pieces are in the scoring zone, OR
+            # 2. it is the same checker that was just moved in the scoring zone this turn
+            if start_pos in scoring_zone and not self.all_pieces_in_scoring_zone(player_id):
+                if start_pos != self.last_scoring_zone_index or target_idx == 24:
+                    return False
 
         path = self.get_player_path(player_id)
 

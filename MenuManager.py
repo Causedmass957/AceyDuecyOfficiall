@@ -328,14 +328,14 @@ class MenuManager:
             True,
             WHITE
         )
-        screen.blit(help_text, (500, 520))
+        screen.blit(help_text, (500, 585))
 
         selected_help = self.small_font.render(
             "Selected profile can be deleted with confirmation.",
             True,
             WHITE
         )
-        screen.blit(selected_help, (500, 545))
+        screen.blit(selected_help, (500, 555))
 
         # ----------------------------
         # Delete confirmation overlay
