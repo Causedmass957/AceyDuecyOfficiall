@@ -57,9 +57,11 @@ class MenuManager:
         # Buttons for landing screen navigation
         # ============================================================
         self.main_menu_buttons = {
-            "new_game": pygame.Rect(SCREEN_WIDTH // 2 - 120, 220, 240, 60),
-            "stats": pygame.Rect(SCREEN_WIDTH // 2 - 120, 310, 240, 60),
-            "exit": pygame.Rect(SCREEN_WIDTH // 2 - 120, 400, 240, 60),
+            "new_game": pygame.Rect(SCREEN_WIDTH // 2 - 120, 190, 240, 58),
+            "rules": pygame.Rect(SCREEN_WIDTH // 2 - 120, 258, 240, 58),
+            "settings": pygame.Rect(SCREEN_WIDTH // 2 - 120, 326, 240, 58),
+            "stats": pygame.Rect(SCREEN_WIDTH // 2 - 120, 394, 240, 58),
+            "exit": pygame.Rect(SCREEN_WIDTH // 2 - 120, 462, 240, 58),
         }
 
         # ============================================================
@@ -224,6 +226,8 @@ class MenuManager:
 
         labels = {
             "new_game": "New Game",
+            "rules": "Rules",
+            "settings": "Settings",
             "stats": "Stats",
             "exit": "Exit",
         }
@@ -451,6 +455,12 @@ class MenuManager:
             self.reset_for_new_game()
             self.state = "PROFILE_SELECT"
             return {"action": "open_profile_select"}
+
+        if self.main_menu_buttons["rules"].collidepoint(mouse_pos):
+            return {"action": "open_rules"}
+
+        if self.main_menu_buttons["settings"].collidepoint(mouse_pos):
+            return {"action": "open_settings"}
 
         if self.main_menu_buttons["stats"].collidepoint(mouse_pos):
             return {"action": "open_stats"}
