@@ -119,6 +119,8 @@ class MenuManager:
     MAIN_MENU_LABELS = {
         "resume": "Resume Game",
         "new_game": "New Game",
+        "host_game": "Host Game (Online)",
+        "join_game": "Join Game (Online)",
         "rules": "Rules",
         "settings": "Settings",
         "stats": "Stats",
@@ -126,7 +128,7 @@ class MenuManager:
     }
 
     def main_menu_button_rects(self):
-        keys = ["new_game", "rules", "settings", "stats", "exit"]
+        keys = ["new_game", "host_game", "join_game", "rules", "settings", "stats", "exit"]
         if SaveManager.has_save():
             keys.insert(0, "resume")
 
@@ -481,6 +483,12 @@ class MenuManager:
             self.reset_for_new_game()
             self.state = "PROFILE_SELECT"
             return {"action": "open_profile_select"}
+
+        if self.main_menu_buttons["host_game"].collidepoint(mouse_pos):
+            return {"action": "open_host_lobby"}
+
+        if self.main_menu_buttons["join_game"].collidepoint(mouse_pos):
+            return {"action": "open_join_lobby"}
 
         if self.main_menu_buttons["rules"].collidepoint(mouse_pos):
             return {"action": "open_rules"}
