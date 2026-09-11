@@ -1,5 +1,6 @@
 import pygame
 from Constants import *
+import SaveManager
 
 
 class MenuManager:
@@ -54,15 +55,10 @@ class MenuManager:
 
         # ============================================================
         # MAIN MENU BUTTONS
-        # Buttons for landing screen navigation
+        # Rects are rebuilt every frame by main_menu_button_rects() so a
+        # "Resume Game" entry can appear when a save file exists.
         # ============================================================
-        self.main_menu_buttons = {
-            "new_game": pygame.Rect(SCREEN_WIDTH // 2 - 120, 190, 240, 58),
-            "rules": pygame.Rect(SCREEN_WIDTH // 2 - 120, 258, 240, 58),
-            "settings": pygame.Rect(SCREEN_WIDTH // 2 - 120, 326, 240, 58),
-            "stats": pygame.Rect(SCREEN_WIDTH // 2 - 120, 394, 240, 58),
-            "exit": pygame.Rect(SCREEN_WIDTH // 2 - 120, 462, 240, 58),
-        }
+        self.main_menu_buttons = self.main_menu_button_rects()
 
         # ============================================================
         # PLAYER COUNT SELECTION BUTTONS
@@ -114,6 +110,35 @@ class MenuManager:
             360,
             50
         )
+
+    # ============================================================
+    # MAIN MENU LAYOUT
+    # Rebuilt each frame so "Resume Game" can appear / disappear with
+    # the save file.
+    # ============================================================
+    MAIN_MENU_LABELS = {
+        "resume": "Resume Game",
+        "new_game": "New Game",
+        "rules": "Rules",
+        "settings": "Settings",
+        "stats": "Stats",
+        "exit": "Exit",
+    }
+
+    def main_menu_button_rects(self):
+        keys = ["new_game", "rules", "settings", "stats", "exit"]
+        if SaveManager.has_save():
+            keys.insert(0, "resume")
+
+        btn_h, gap = 56, 12
+        total = len(keys) * btn_h + (len(keys) - 1) * gap
+        y = max(180, SCREEN_HEIGHT // 2 - total // 2 + 20)
+
+        rects = {}
+        for key in keys:
+            rects[key] = pygame.Rect(SCREEN_WIDTH // 2 - 130, y, 260, btn_h)
+            y += btn_h + gap
+        return rects
 
     # ============================================================
     # PUBLIC MENU INTERFACE
@@ -224,17 +249,12 @@ class MenuManager:
         subtitle_rect = subtitle.get_rect(center=(SCREEN_WIDTH // 2, 150))
         screen.blit(subtitle, subtitle_rect)
 
-        labels = {
-            "new_game": "New Game",
-            "rules": "Rules",
-            "settings": "Settings",
-            "stats": "Stats",
-            "exit": "Exit",
-        }
+        self.main_menu_buttons = self.main_menu_button_rects()
 
         for key, rect in self.main_menu_buttons.items():
-            pygame.draw.rect(screen, GRAY, rect, border_radius=8)
-            text = self.font.render(labels[key], True, WHITE)
+            fill = (46, 120, 90) if key == "resume" else GRAY
+            pygame.draw.rect(screen, fill, rect, border_radius=8)
+            text = self.font.render(self.MAIN_MENU_LABELS[key], True, WHITE)
             text_rect = text.get_rect(center=rect.center)
             screen.blit(text, text_rect)
 
@@ -451,6 +471,12 @@ class MenuManager:
     # Handles clicks on New Game / Stats / Exit
     # ============================================================
     def _handle_main_menu_click(self, mouse_pos):
+        self.main_menu_buttons = self.main_menu_button_rects()
+
+        if "resume" in self.main_menu_buttons and \
+                self.main_menu_buttons["resume"].collidepoint(mouse_pos):
+            return {"action": "resume_game"}
+
         if self.main_menu_buttons["new_game"].collidepoint(mouse_pos):
             self.reset_for_new_game()
             self.state = "PROFILE_SELECT"

@@ -344,6 +344,11 @@ class GameEngine:
     def attempt_move(self, player_id, start_idx, target_idx):
         path = self.get_player_path(player_id)
 
+        # Guard against a stale board source (e.g. a lingering selection that
+        # points at a checker that has already been borne off / moved away).
+        if start_idx >= 0 and (start_idx >= 24 or player_id not in self.board[start_idx]):
+            return False
+
         prev_last_entered = self.last_entered_index
         prev_last_scoring = self.last_scoring_zone_index
 
@@ -656,6 +661,65 @@ class GameEngine:
         return sum(point.count(player_id) for point in self.board)
 
     # ================================================================
+    # CONTROLLER NAVIGATION HELPERS
+    # Give the game pad a concrete list of "things I can pick" and, once
+    # a checker is picked, "where it can go" - so the pad cycles through
+    # real legal choices instead of a free-floating cursor.
+    # ================================================================
+    def movable_sources(self, player_id):
+        """Ordered list of sources the current player could select this
+        roll: -1 = jail, -2 = start pool, 0..23 = a board point that has
+        at least one legal move."""
+        if self.game_over or self.phase != "PLAYING" or not self.moves_available:
+            return []
+
+        if self.jail.get(player_id, 0) > 0:
+            return [-1] if self.legal_destinations(player_id, -1) else []
+
+        if self.start_pool.get(player_id, 0) > 0:
+            sources = []
+            if self.legal_destinations(player_id, -2):
+                sources.append(-2)
+            li = self.last_entered_index
+            if (li is not None and 0 <= li < 24 and player_id in self.board[li]
+                    and self.legal_destinations(player_id, li)):
+                sources.append(li)
+            return sources
+
+        return [idx for idx in range(24)
+                if player_id in self.board[idx] and self.legal_destinations(player_id, idx)]
+
+    def legal_destinations(self, player_id, source):
+        """Ordered list of target indices reachable from `source` with the
+        dice in hand (24 = bear off)."""
+        path = self.get_player_path(player_id)
+        dests = []
+
+        for mv in sorted(set(self.moves_available)):
+            if not self.is_legal_move(player_id, source, mv):
+                continue
+
+            if source in (-1, -2):
+                step = mv - 1
+                target = path[step] if 0 <= step < 24 else None
+            else:
+                try:
+                    step = path.index(source) + mv
+                except ValueError:
+                    continue
+                if step == 24:
+                    target = 24
+                elif step < 24:
+                    target = path[step]
+                else:
+                    target = None
+
+            if target is not None and target not in dests:
+                dests.append(target)
+
+        return sorted(dests)
+
+    # ================================================================
     # PROFILES / NAMES
     # ================================================================
     def set_profile_manager(self, profile_manager):
@@ -788,3 +852,86 @@ class GameEngine:
     # Kept for backwards compatibility.
     def get_final_standings(self):
         return self.get_standings()
+
+    # ================================================================
+    # SAVE / RESUME
+    # A paused game is serialised to plain JSON.  Everything the engine
+    # needs to carry on is a list / dict / int / bool / None already;
+    # the only wrinkle is that JSON turns int dict-keys into strings, so
+    # from_dict() converts the player-id keyed maps back.
+    # ================================================================
+    SAVE_VERSION = 1
+
+    def to_dict(self):
+        return {
+            "version": self.SAVE_VERSION,
+            "phase": self.phase,
+            "num_players": self.num_players,
+            "player_profiles": {str(k): v for k, v in self.player_profiles.items()},
+            "is_acey_duecy_pending": self.is_acey_duecy_pending,
+            "waiting_for_doubles_roll": self.waiting_for_doubles_roll,
+            "has_extra_roll": self.has_extra_roll,
+            "board": [list(point) for point in self.board],
+            "start_pool": self.start_pool,
+            "jail": self.jail,
+            "finished_pool": self.finished_pool,
+            "player_rolls": self.player_rolls,
+            "dice_values": list(self.dice_values),
+            "moves_available": list(self.moves_available),
+            "current_player": self.current_player,
+            "turn_order": list(self.turn_order),
+            "game_over": self.game_over,
+            "winner_id": self.winner_id,
+            "final_standings": list(self.final_standings),
+            "required_to_win": self.required_to_win,
+            "finished_players": list(self.finished_players),
+            "placements": list(self.placements),
+            "last_entered_index": self.last_entered_index,
+            "last_scoring_zone_index": self.last_scoring_zone_index,
+            "game_stats": {str(k): dict(v) for k, v in self.game_stats.items()},
+            "turn_number": self.turn_number,
+            "turn_started": self.turn_started,
+            "has_rolled_this_turn": self.has_rolled_this_turn,
+            "current_turn_entry": self.current_turn_entry,
+            "current_turn_moves": self.current_turn_moves,
+            "turn_log": list(self.turn_log),
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        def int_keys(d):
+            return {int(k): v for k, v in (d or {}).items()}
+
+        eng = cls(num_players=data.get("num_players", 4))
+        eng.phase = data["phase"]
+        eng.num_players = data["num_players"]
+        eng.player_profiles = int_keys(data.get("player_profiles"))
+        eng.is_acey_duecy_pending = data["is_acey_duecy_pending"]
+        eng.waiting_for_doubles_roll = data["waiting_for_doubles_roll"]
+        eng.has_extra_roll = data["has_extra_roll"]
+        eng.board = [list(point) for point in data["board"]]
+        eng.start_pool = int_keys(data["start_pool"])
+        eng.jail = int_keys(data["jail"])
+        eng.finished_pool = int_keys(data["finished_pool"])
+        eng.player_rolls = int_keys(data["player_rolls"])
+        eng.dice_values = list(data.get("dice_values", []))
+        eng.moves_available = list(data["moves_available"])
+        eng.current_player = data["current_player"]
+        eng.turn_order = list(data["turn_order"])
+        eng.game_over = data["game_over"]
+        eng.winner_id = data["winner_id"]
+        eng.final_standings = list(data["final_standings"])
+        eng.required_to_win = data.get("required_to_win", 15)
+        eng.finished_players = list(data["finished_players"])
+        eng.placements = list(data["placements"])
+        eng.last_entered_index = data["last_entered_index"]
+        eng.last_scoring_zone_index = data["last_scoring_zone_index"]
+        eng.game_stats = {int(k): dict(v) for k, v in (data.get("game_stats") or {}).items()}
+        eng.turn_number = data["turn_number"]
+        eng.turn_started = data["turn_started"]
+        eng.has_rolled_this_turn = data["has_rolled_this_turn"]
+        eng.current_turn_entry = data.get("current_turn_entry")
+        eng.current_turn_moves = data.get("current_turn_moves") or []
+        eng.turn_log = list(data.get("turn_log", []))
+        eng.selected_index = None
+        return eng

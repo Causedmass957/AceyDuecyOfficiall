@@ -10,10 +10,17 @@ from Layout import Layout
 from Renderer import Renderer
 from MenuManager import MenuManager
 from ProfileManager import ProfileManager
+from StatsMenu import StatsMenu
+from PauseMenu import PauseMenu
 from Settings import Settings, MIN_WINDOW_SIZE
+from Controller import ControllerManager
+import SaveManager as save
 
 BASE_W, BASE_H = SCREEN_WIDTH, SCREEN_HEIGHT
 CRASH_LOG = "crash.log"
+
+# Screens the game pad drives with high-level intents rather than a cursor.
+INTENT_MODES = {"GAME", "PAUSE", "RULES"}
 
 
 def log_crash(exc, context=""):
@@ -96,17 +103,22 @@ def main():
 
     profile_manager = ProfileManager()
     menu_manager = MenuManager(profile_manager)
+    stats_menu = StatsMenu(profile_manager)
+    pause_menu = PauseMenu()
     layout = Layout(BASE_W, BASE_H)
     view = Renderer(canvas, layout)
+    controller = ControllerManager((BASE_W, BASE_H))
 
     engine = None
 
     state = {
-        "app_mode": "MENU",       # MENU | GAME | RULES | SETTINGS
+        "app_mode": "MENU",       # MENU | GAME | RULES | SETTINGS | STATS | PAUSE
         "overlay": None,          # None | "HISTORY"  (GAME only)
         "rules_page": 0,
-        "return_mode": "MENU",    # where RULES / SETTINGS return to
+        "return_mode": "MENU",    # where RULES / SETTINGS / STATS return to
         "stats_flushed": False,
+        "focus_source_i": 0,      # game-pad highlight: which movable piece
+        "focus_dest_i": 0,        # game-pad highlight: which legal target
     }
 
     transform = (1.0, 0, 0)
@@ -116,12 +128,23 @@ def main():
     while running:
         dt = clock.tick(FPS)
         menu_manager.update(dt)
+        controller.set_mode("INTENT" if state["app_mode"] in INTENT_MODES else "CURSOR")
+        controller.update(dt)
 
         try:
             for raw_event in pygame.event.get():
                 if raw_event.type == pygame.QUIT:
                     running = False
                     continue
+
+                if raw_event.type in (pygame.JOYBUTTONDOWN, pygame.JOYBUTTONUP,
+                                      pygame.JOYAXISMOTION, pygame.JOYHATMOTION,
+                                      pygame.JOYDEVICEADDED, pygame.JOYDEVICEREMOVED):
+                    controller.handle_event(raw_event)
+                    continue
+
+                if raw_event.type == pygame.MOUSEMOTION and any(raw_event.rel):
+                    controller.on_mouse_activity()
 
                 if raw_event.type == pygame.VIDEORESIZE and not settings.get("fullscreen"):
                     settings.set("window_size", [max(MIN_WINDOW_SIZE[0], raw_event.w),
@@ -137,7 +160,7 @@ def main():
                 event = remap_event(raw_event, transform)
 
                 if state["app_mode"] == "MENU":
-                    handle_menu_event(event, state, menu_manager)
+                    handle_menu_event(event, state, menu_manager, stats_menu, profile_manager)
                     if state.pop("_quit", False):
                         running = False
                     if "_new_engine" in state:
@@ -146,12 +169,29 @@ def main():
                 elif state["app_mode"] == "RULES":
                     handle_rules_event(event, state, view)
 
+                elif state["app_mode"] == "STATS":
+                    handle_stats_event(event, state, stats_menu)
+
+                elif state["app_mode"] == "PAUSE":
+                    handle_pause_event(event, state, pause_menu, engine, menu_manager)
+
                 elif state["app_mode"] == "SETTINGS":
                     if handle_settings_event(event, state, view, settings):
                         window = make_window(settings)
 
                 elif state["app_mode"] == "GAME":
-                    handle_game_event(event, state, engine, view, profile_manager, menu_manager)
+                    handle_game_event(event, state, engine, view, profile_manager,
+                                      menu_manager, pause_menu)
+
+            # ---- game-pad intents (INTENT-mode screens) ----
+            for intent in controller.take_intents():
+                if state["app_mode"] == "GAME":
+                    handle_game_intent(intent, state, engine, view, profile_manager,
+                                       menu_manager, pause_menu)
+                elif state["app_mode"] == "PAUSE":
+                    handle_pause_intent(intent, state, pause_menu, engine, menu_manager)
+                elif state["app_mode"] == "RULES":
+                    handle_rules_intent(intent, state)
 
             # ---- draw to canvas ----
             if state["app_mode"] == "MENU":
@@ -159,13 +199,21 @@ def main():
             elif state["app_mode"] == "RULES":
                 _draw_backdrop(canvas, menu_manager, engine, view, state)
                 view.draw_rules_overlay(state["rules_page"])
+            elif state["app_mode"] == "STATS":
+                stats_menu.draw(canvas)
+            elif state["app_mode"] == "PAUSE":
+                if engine is not None:
+                    draw_game(canvas, engine, view, {"overlay": None})
+                pause_menu.draw(canvas)
             elif state["app_mode"] == "SETTINGS":
                 view.draw_settings_overlay(
                     settings, backdrop="menu" if state["return_mode"] == "MENU" else "game")
             elif state["app_mode"] == "GAME":
-                draw_game(canvas, engine, view, state)
+                draw_game(canvas, engine, view, state, show_focus=controller.connected())
 
+            controller.draw_cursor(canvas)
             transform = present(window, canvas) or transform
+            controller.set_transform(transform)
 
         except Exception as exc:  # noqa: BLE001 - last-resort: log and bail cleanly
             log_crash(exc, f"app_mode={state.get('app_mode')} "
@@ -180,8 +228,15 @@ def main():
 # ================================================================
 # MENU
 # ================================================================
-def handle_menu_event(event, state, menu_manager):
+def handle_menu_event(event, state, menu_manager, stats_menu, profile_manager):
     if event.type == pygame.KEYDOWN:
+        # Esc / controller B steps back one level through the menu screens.
+        if event.key == pygame.K_ESCAPE and not menu_manager.input_active:
+            if menu_manager.state == "CREATE_PROFILE":
+                menu_manager.state = "PROFILE_SELECT"
+            elif menu_manager.state == "PROFILE_SELECT":
+                menu_manager.state = "MAIN_MENU"
+            return
         menu_manager.handle_keydown(event)
         return
     if event.type != pygame.MOUSEBUTTONDOWN:
@@ -202,15 +257,30 @@ def handle_menu_event(event, state, menu_manager):
         state["return_mode"] = "MENU"
         state["app_mode"] = "SETTINGS"
     elif action == "open_stats":
-        print("Stats menu not wired yet.")
+        stats_menu.reset()
+        state["return_mode"] = "MENU"
+        state["app_mode"] = "STATS"
     elif action == "start_game":
         engine = GameEngine()
         engine.set_player_count(result["num_players"])
         engine.set_player_profiles(result["player_profiles"])
-        state["_new_engine"] = engine
-        state["overlay"] = None
-        state["stats_flushed"] = False
-        state["app_mode"] = "GAME"
+        engine.set_profile_manager(profile_manager)
+        _enter_game(state, engine)
+    elif action == "resume_game":
+        engine = save.load_engine()
+        if engine is not None:
+            engine.set_profile_manager(profile_manager)
+            save.clear_save()
+            _enter_game(state, engine)
+
+
+def _enter_game(state, engine):
+    state["_new_engine"] = engine
+    state["overlay"] = None
+    state["stats_flushed"] = False
+    state["focus_source_i"] = 0
+    state["focus_dest_i"] = 0
+    state["app_mode"] = "GAME"
 
 
 # ================================================================
@@ -236,6 +306,79 @@ def handle_rules_event(event, state, view):
             panel = pygame.Rect(120, 60, SCREEN_WIDTH - 240, SCREEN_HEIGHT - 150)
             if not panel.collidepoint(event.pos):
                 state["app_mode"] = state["return_mode"]
+
+
+def handle_rules_intent(intent, state):
+    if intent == "NAV_NEXT":
+        state["rules_page"] = min(len(RULES_PAGES) - 1, state["rules_page"] + 1)
+    elif intent == "NAV_PREV":
+        state["rules_page"] = max(0, state["rules_page"] - 1)
+    elif intent in ("CANCEL", "RULES", "PAUSE"):
+        state["app_mode"] = state["return_mode"]
+
+
+# ================================================================
+# PAUSE  (in-game; save & quit / resume)
+# ================================================================
+def handle_pause_event(event, state, pause_menu, engine, menu_manager):
+    if event.type == pygame.KEYDOWN:
+        if event.key in (pygame.K_ESCAPE, pygame.K_p):
+            state["app_mode"] = "GAME"
+        elif event.key in (pygame.K_UP, pygame.K_LEFT):
+            pause_menu.move(-1)
+        elif event.key in (pygame.K_DOWN, pygame.K_RIGHT):
+            pause_menu.move(1)
+        elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+            _apply_pause_action(pause_menu.current_action(), state, engine, menu_manager)
+        return
+
+    if event.type == pygame.MOUSEBUTTONDOWN:
+        action = pause_menu.handle_click(event.pos)
+        if action:
+            _apply_pause_action(action, state, engine, menu_manager)
+
+
+def handle_pause_intent(intent, state, pause_menu, engine, menu_manager):
+    if intent == "NAV_NEXT":
+        pause_menu.move(1)
+    elif intent == "NAV_PREV":
+        pause_menu.move(-1)
+    elif intent == "CONFIRM":
+        _apply_pause_action(pause_menu.current_action(), state, engine, menu_manager)
+    elif intent in ("CANCEL", "PAUSE"):
+        state["app_mode"] = "GAME"
+
+
+def _apply_pause_action(action, state, engine, menu_manager):
+    if action == "resume":
+        state["app_mode"] = "GAME"
+        return
+
+    if action == "save_quit" and engine is not None:
+        save.write_save(engine)
+
+    # save_quit and quit both drop back to the main menu.
+    state["app_mode"] = "MENU"
+    state["overlay"] = None
+    menu_manager.state = "MAIN_MENU"
+
+
+# ================================================================
+# STATS
+# ================================================================
+def handle_stats_event(event, state, stats_menu):
+    if event.type == pygame.KEYDOWN:
+        if event.key == pygame.K_ESCAPE and not stats_menu.go_back():
+            state["app_mode"] = state["return_mode"]
+        return
+
+    if event.type == pygame.MOUSEWHEEL:
+        stats_menu.scroll_by(event.y)
+        return
+
+    if event.type == pygame.MOUSEBUTTONDOWN:
+        if stats_menu.handle_click(event.pos) == "close":
+            state["app_mode"] = state["return_mode"]
 
 
 # ================================================================
@@ -275,7 +418,7 @@ def _draw_backdrop(canvas, menu_manager, engine, view, state):
 # ================================================================
 # GAME
 # ================================================================
-def handle_game_event(event, state, engine, view, profile_manager, menu_manager):
+def handle_game_event(event, state, engine, view, profile_manager, menu_manager, pause_menu):
     if engine is None:
         return
 
@@ -287,6 +430,9 @@ def handle_game_event(event, state, engine, view, profile_manager, menu_manager)
         if event.key == pygame.K_h:
             state["overlay"] = None if state["overlay"] == "HISTORY" else "HISTORY"
             view.history_scroll = 0
+        elif event.key == pygame.K_p and not engine.game_over:
+            pause_menu.reset()
+            state["app_mode"] = "PAUSE"
         elif event.key == pygame.K_ESCAPE:
             state["overlay"] = None
         elif event.key == pygame.K_u and engine.phase == "PLAYING" and not engine.game_over:
@@ -297,12 +443,7 @@ def handle_game_event(event, state, engine, view, profile_manager, menu_manager)
         return
 
     if engine.game_over:
-        if not state["stats_flushed"]:
-            handle_game_finish(engine, profile_manager)
-            state["stats_flushed"] = True
-        state["app_mode"] = "MENU"
-        state["overlay"] = None
-        menu_manager.state = "MAIN_MENU"
+        _finish_and_exit_game(state, engine, profile_manager, menu_manager)
         return
 
     if state["overlay"] == "HISTORY":
@@ -368,7 +509,11 @@ def handle_playing_click(pos, engine, layout, state):
         return
 
     if clicked_idx == engine.selected_index:
-        if not engine.attempt_move(engine.current_player, engine.selected_index, 24):
+        engine.attempt_move(engine.current_player, engine.selected_index, 24)
+        # Drop the selection once the source point no longer holds one of the
+        # player's checkers (failed move, or the last one just borne off).
+        idx = engine.selected_index
+        if idx is None or idx < 0 or idx >= 24 or engine.current_player not in engine.board[idx]:
             engine.selected_index = None
         return
 
@@ -392,9 +537,133 @@ def view_scroll_reset(state):
 
 
 # ================================================================
+# GAME  -  controller intents
+# The pad cycles a highlight through the current player's movable
+# pieces, then (once one is picked) through that piece's legal targets.
+# ================================================================
+def handle_game_intent(intent, state, engine, view, profile_manager, menu_manager, pause_menu):
+    if engine is None:
+        return
+
+    if intent == "PAUSE" and not engine.game_over:
+        pause_menu.reset()
+        state["app_mode"] = "PAUSE"
+        return
+
+    if state["overlay"] == "HISTORY":
+        if intent == "NAV_PREV":
+            view.history_scroll += 1
+        elif intent == "NAV_NEXT":
+            view.history_scroll = max(0, view.history_scroll - 1)
+        elif intent in ("CANCEL", "HISTORY"):
+            state["overlay"] = None
+        return
+
+    if engine.game_over:
+        if intent in ("CONFIRM", "ACTION"):
+            _finish_and_exit_game(state, engine, profile_manager, menu_manager)
+        return
+
+    if intent == "RULES":
+        state["rules_page"] = 0
+        state["return_mode"] = "GAME"
+        state["app_mode"] = "RULES"
+        return
+
+    if intent == "HISTORY":
+        state["overlay"] = "HISTORY"
+        view.history_scroll = 0
+        return
+
+    if engine.phase == "INITIAL_ROLL":
+        if intent in ("CONFIRM", "ACTION"):
+            for p_id in range(1, engine.num_players + 1):
+                if p_id not in engine.player_rolls:
+                    engine.record_initial_roll(p_id)
+                    if engine.phase == "PLAYING":
+                        engine.phase = "SHOW_INITIAL_WINNER"
+                    break
+        return
+
+    if engine.phase == "SHOW_INITIAL_WINNER":
+        if intent in ("CONFIRM", "ACTION"):
+            engine.phase = "PLAYING"
+        return
+
+    if engine.phase != "PLAYING":
+        return
+
+    if intent == "UNDO":
+        engine.undo_last_move()
+        _reset_focus(state)
+    elif intent == "ACTION":
+        if engine.waiting_for_doubles_roll or not engine.has_rolled_this_turn:
+            engine.roll_dice()
+        elif engine.moves_available:
+            engine.pass_turn()
+        else:
+            engine.end_turn()
+        _reset_focus(state)
+    elif intent == "CANCEL":
+        if engine.selected_index is not None:
+            engine.selected_index = None
+            state["focus_dest_i"] = 0
+    elif intent in ("NAV_NEXT", "NAV_PREV"):
+        _move_focus(state, engine, 1 if intent == "NAV_NEXT" else -1)
+    elif intent == "CONFIRM":
+        _confirm_focus(state, engine)
+
+
+def _reset_focus(state):
+    state["focus_source_i"] = 0
+    state["focus_dest_i"] = 0
+
+
+def _move_focus(state, engine, delta):
+    pid = engine.current_player
+    if engine.selected_index is None:
+        n = len(engine.movable_sources(pid))
+        if n:
+            state["focus_source_i"] = (state.get("focus_source_i", 0) + delta) % n
+    else:
+        n = len(engine.legal_destinations(pid, engine.selected_index))
+        if n:
+            state["focus_dest_i"] = (state.get("focus_dest_i", 0) + delta) % n
+
+
+def _confirm_focus(state, engine):
+    pid = engine.current_player
+
+    if engine.selected_index is None:
+        sources = engine.movable_sources(pid)
+        if sources:
+            engine.select_piece(pid, sources[state.get("focus_source_i", 0) % len(sources)])
+            state["focus_dest_i"] = 0
+        return
+
+    dests = engine.legal_destinations(pid, engine.selected_index)
+    if not dests:
+        return
+    target = dests[state.get("focus_dest_i", 0) % len(dests)]
+    if engine.attempt_move(pid, engine.selected_index, target):
+        engine.selected_index = None
+        _reset_focus(state)
+
+
+def _finish_and_exit_game(state, engine, profile_manager, menu_manager):
+    if not state["stats_flushed"]:
+        handle_game_finish(engine, profile_manager)
+        state["stats_flushed"] = True
+    save.clear_save()
+    state["app_mode"] = "MENU"
+    state["overlay"] = None
+    menu_manager.state = "MAIN_MENU"
+
+
+# ================================================================
 # DRAW
 # ================================================================
-def draw_game(canvas, engine, view, state):
+def draw_game(canvas, engine, view, state, show_focus=False):
     if engine.phase == "PLAYER_SELECTION":
         view.draw_player_selection()
         return
@@ -406,23 +675,25 @@ def draw_game(canvas, engine, view, state):
     view.draw_status_chips(engine)
 
     if engine.phase == "INITIAL_ROLL":
-        view.draw_setup_overlay(engine)
+        view.draw_setup_overlay(engine, pad=show_focus)
         return
 
     if engine.phase == "SHOW_INITIAL_WINNER":
-        view.draw_initial_winner_screen(engine)
+        view.draw_initial_winner_screen(engine, pad=show_focus)
         return
 
-    view.draw_ui(engine)
+    view.draw_ui(engine, pad=show_focus)
 
     if state.get("_scroll_reset"):
         view.history_scroll = 0
         state["_scroll_reset"] = False
 
     if engine.game_over:
-        view.draw_game_over(engine)
+        view.draw_game_over(engine, pad=show_focus)
     elif state.get("overlay") == "HISTORY":
         view.draw_history_overlay(engine)
+    elif show_focus:
+        view.draw_controller_focus(engine, state)
 
 
 # ================================================================

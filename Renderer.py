@@ -156,7 +156,7 @@ class Renderer:
     # ============================================================
     # IN-GAME UI
     # ============================================================
-    def draw_ui(self, engine):
+    def draw_ui(self, engine, pad=False):
         if engine.current_player is None:
             return
         lay = self.layout
@@ -217,12 +217,70 @@ class Renderer:
         if engine.jail.get(engine.current_player, 0) > 0:
             msg = "MUST RE-ENTER FROM JAIL"
         elif engine.start_pool.get(engine.current_player, 0) > 0:
-            msg = "CLICK YOUR PANEL TO ENTER FROM START"
+            msg = ("SELECT YOUR PANEL TO ENTER FROM START" if pad
+                   else "CLICK YOUR PANEL TO ENTER FROM START")
         else:
             msg = None
         if msg:
             ms = self.chip_small_font.render(msg, True, (231, 150, 110))
             self.screen.blit(ms, ms.get_rect(center=(SCREEN_WIDTH // 2, lay.hint_y)))
+
+        if pad:
+            legend = ("Stick: move highlight    A: select    B: cancel    "
+                      "X: roll / pass    LB: undo    Y: history    Menu: pause")
+            ls = self.chip_small_font.render(legend, True, (150, 150, 150))
+            self.screen.blit(ls, ls.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 9)))
+
+    # ============================================================
+    # CONTROLLER FOCUS HIGHLIGHT
+    # Drawn on top of the board when a game pad is connected: a yellow
+    # ring around the piece / target the stick is currently pointing at.
+    # ============================================================
+    def draw_controller_focus(self, engine, state):
+        if engine.current_player is None or engine.game_over:
+            return
+        if engine.phase != "PLAYING" or not engine.moves_available:
+            return
+
+        pid = engine.current_player
+        color = (255, 214, 10)
+
+        if engine.selected_index is None:
+            sources = engine.movable_sources(pid)
+            if not sources:
+                return
+            target = sources[state.get("focus_source_i", 0) % len(sources)]
+            self._focus_ring(target, pid, engine, color)
+        else:
+            dests = engine.legal_destinations(pid, engine.selected_index)
+            if not dests:
+                return
+            target = dests[state.get("focus_dest_i", 0) % len(dests)]
+            self._focus_ring(target, pid, engine, color, is_dest=True)
+
+    def _focus_ring(self, target, pid, engine, color, is_dest=False):
+        lay = self.layout
+
+        if target == -2:
+            pygame.draw.rect(self.screen, color, lay.chip_rects[pid], 4, border_radius=6)
+            tag = "ENTER FROM START"
+        elif target == -1:
+            x, y = lay.jail_pos(pid, engine.num_players)
+            pygame.draw.circle(self.screen, color, (int(x), int(y)), int(lay.piece_r + 8), 4)
+            tag = "LEAVE JAIL"
+        elif target == 24:
+            pygame.draw.rect(self.screen, color, lay.chip_rects[pid], 4, border_radius=6)
+            tag = "BEAR OFF"
+        else:
+            px, py = lay.piece_pos(target, 0)
+            pygame.draw.circle(self.screen, color, (int(px), int(py)), int(lay.piece_r + 7), 4)
+            tag = "MOVE HERE" if is_dest else "SELECT THIS PIECE"
+
+        # Pill on top of (and masking) the mouse-oriented hint line.
+        surf = self.chip_font.render(tag, True, (20, 20, 20))
+        pill = surf.get_rect(center=(SCREEN_WIDTH // 2, lay.hint_y)).inflate(28, 12)
+        pygame.draw.rect(self.screen, color, pill, border_radius=10)
+        self.screen.blit(surf, surf.get_rect(center=pill.center))
 
     def _action_button(self, engine):
         if not engine.has_rolled_this_turn or engine.waiting_for_doubles_roll:
@@ -392,7 +450,7 @@ class Renderer:
     # ============================================================
     # GAME OVER SCREEN
     # ============================================================
-    def draw_game_over(self, engine):
+    def draw_game_over(self, engine, pad=False):
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 225))
         self.screen.blit(overlay, (0, 0))
@@ -423,13 +481,15 @@ class Renderer:
                              (panel.x + 110, y + 32))
             y += 70
 
-        hint = self.font.render("Click anywhere to return to the menu", True, (210, 210, 210))
+        hint_text = ("Press A / X to return to the menu" if pad
+                     else "Click anywhere to return to the menu")
+        hint = self.font.render(hint_text, True, (210, 210, 210))
         self.screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, panel.bottom + 40)))
 
     # ============================================================
     # INITIAL ROLL SCREENS
     # ============================================================
-    def draw_setup_overlay(self, engine):
+    def draw_setup_overlay(self, engine, pad=False):
         panel = pygame.Rect(0, 0, 560, 120 + 38 * engine.num_players)
         panel.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         pygame.draw.rect(self.screen, PANEL_BG, panel, border_radius=10)
@@ -437,8 +497,10 @@ class Renderer:
 
         title = self.font.render("Initial Roll", True, WHITE)
         self.screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, panel.y + 30)))
-        sub = self.chip_small_font.render(
-            "Click your status panel to roll two dice - highest total plays first", True, (190, 190, 190))
+        instruction = ("Press A / X to roll for the next player - highest total plays first"
+                       if pad else
+                       "Click your status panel to roll two dice - highest total plays first")
+        sub = self.chip_small_font.render(instruction, True, (190, 190, 190))
         self.screen.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, panel.y + 58)))
 
         y = panel.y + 88
@@ -450,7 +512,7 @@ class Renderer:
             self.screen.blit(surf, surf.get_rect(center=(SCREEN_WIDTH // 2, y)))
             y += 38
 
-    def draw_initial_winner_screen(self, engine):
+    def draw_initial_winner_screen(self, engine, pad=False):
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         self.screen.blit(overlay, (0, 0))
@@ -471,5 +533,5 @@ class Renderer:
                              self.chip_small_font.render(f"Turn order: {order_names}", True, (210, 210, 210))
                              .get_rect(center=(SCREEN_WIDTH // 2, y + 16)))
 
-        hint = self.font.render("Click to begin", True, WHITE)
+        hint = self.font.render("Press A / X to begin" if pad else "Click to begin", True, WHITE)
         self.screen.blit(hint, hint.get_rect(center=(SCREEN_WIDTH // 2, y + 66)))
