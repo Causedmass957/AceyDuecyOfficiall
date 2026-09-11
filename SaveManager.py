@@ -9,8 +9,9 @@ import json
 import os
 
 from GameEngine import GameEngine
+from Paths import migrate_legacy_file
 
-SAVE_PATH = "savegame.json"
+SAVE_PATH = migrate_legacy_file("savegame.json")
 
 
 def has_save():

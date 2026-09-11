@@ -1,6 +1,8 @@
 import sqlite3
 from datetime import datetime
 
+from Paths import migrate_legacy_file
+
 
 # Every integer column the stats table is expected to have.  Missing columns
 # are added automatically on start-up so an older stats.db keeps working.
@@ -39,8 +41,8 @@ MAX_COLUMNS = {
 
 
 class ProfileManager:
-    def __init__(self, db_path="stats.db"):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        self.db_path = db_path if db_path is not None else migrate_legacy_file("stats.db")
         self._initialize_database()
 
     def _connect(self):

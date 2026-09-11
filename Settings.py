@@ -7,7 +7,7 @@ structured so more options can be added over time without further plumbing.
 import json
 import os
 
-SETTINGS_PATH = "settings.json"
+from Paths import migrate_legacy_file
 
 DEFAULTS = {
     "fullscreen": False,
@@ -19,8 +19,8 @@ MIN_WINDOW_SIZE = (900, 600)
 
 
 class Settings:
-    def __init__(self, path=SETTINGS_PATH):
-        self.path = path
+    def __init__(self, path=None):
+        self.path = path if path is not None else migrate_legacy_file("settings.json")
         self.data = dict(DEFAULTS)
         self.load()
 
