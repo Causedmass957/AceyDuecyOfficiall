@@ -1,0 +1,48 @@
+name: Dev Build
+
+# The "dev" environment: every push to main gets built and uploaded as a
+# short-lived Actions artifact (not a public GitHub Release) so you can grab
+# the latest onedir zip without building locally. No installer, no
+# announcement -- this is the "does it still run" tier.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest -m "not manual" -v
+
+      - name: Stamp dev channel (keeps save data separate from Production)
+        shell: bash
+        run: echo "dev" > CHANNEL
+
+      - name: Stamp dev version (base VERSION + short commit sha)
+        shell: bash
+        run: echo "$(cat VERSION)+dev.${GITHUB_SHA::7}" > VERSION
+
+      - name: Build with PyInstaller
+        run: pyinstaller AceyDuecy.spec
+
+      - name: Zip the build
+        shell: pwsh
+        run: Compress-Archive -Path dist/AceyDuecy/* -DestinationPath AceyDuecy-dev.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AceyDuecy-dev-${{ github.sha }}
+          path: AceyDuecy-dev.zip
+          retention-days: 14

@@ -256,5 +256,10 @@ def main_test():
     print("\nALL LOBBY/UI CHECKS PASSED")
 
 
+def test_lobby_ui_full_flow():
+    """Pytest entry point for the manual script's main_test() above."""
+    main_test()
+
+
 if __name__ == "__main__":
     main_test()

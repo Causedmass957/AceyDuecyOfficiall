@@ -20,11 +20,6 @@ Two different needs, two different rules:
 import os
 import sys
 
-# Separates save data for side-by-side installs (dev / beta / production)
-# on one machine. Unset for normal local runs -- only the release pipeline
-# needs to set this later. Empty string means "no sub-folder".
-APP_CHANNEL = os.environ.get("ACEYDUECY_CHANNEL", "")
-
 _APP_NAME = "AceyDuecy"
 
 # Directory the source files live in (== bundle root once frozen; PyInstaller
@@ -36,6 +31,29 @@ def resource_path(*parts):
     """Absolute path to a bundled, read-only asset (image, sound, font)."""
     base = getattr(sys, "_MEIPASS", _SOURCE_DIR)
     return os.path.join(base, *parts)
+
+
+def _bundled_channel():
+    """Read a build-time CHANNEL file, if the release pipeline stamped one in.
+
+    dev/staging builds get one written next to VERSION (see
+    .github/workflows/dev-build.yml and release.yml); a normal production
+    build and every local dev run have no such file, which means "no
+    namespacing" -- the plain %APPDATA%\\AceyDuecy folder.
+    """
+    try:
+        with open(resource_path("CHANNEL"), "r", encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+# Separates save data for side-by-side installs (dev / beta / production) on
+# one machine, so a beta tester's game doesn't corrupt production save data
+# sitting on the same PC. An env var always wins, for ad-hoc dev/test
+# overrides (see conftest.py, test_lan.py); otherwise fall back to whatever
+# channel the build was stamped with.
+APP_CHANNEL = os.environ.get("ACEYDUECY_CHANNEL", "") or _bundled_channel()
 
 
 def data_dir():

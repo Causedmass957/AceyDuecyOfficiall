@@ -1,6 +1,7 @@
 import pygame
 import sys
 import os
+import threading
 import traceback
 from datetime import datetime
 
@@ -19,10 +20,13 @@ import NetSession
 import Networking
 import SaveManager as save
 from Paths import resource_path, data_path
+import UpdateChecker
+import TailscaleCheck
 
 BASE_W, BASE_H = SCREEN_WIDTH, SCREEN_HEIGHT
 CRASH_LOG = data_path("crash.log")
 SPLASH_IMAGE_PATH = resource_path("assets", "splash.jpg")
+_UPDATE_BANNER_FONT = None  # created lazily, once, after pygame.font.init()
 
 # Screens the game pad drives with high-level intents rather than a cursor.
 INTENT_MODES = {"GAME", "PAUSE", "RULES"}
@@ -37,6 +41,54 @@ def log_crash(exc, context=""):
     except OSError:
         pass
     traceback.print_exc()
+
+
+def _check_for_update_async(holder):
+    """Runs on a background thread; see the threading.Thread(...) call in main()."""
+    try:
+        result = UpdateChecker.check_for_update()
+    except Exception:
+        return
+    if result:
+        holder["result"] = result
+
+
+def _get_banner_font():
+    global _UPDATE_BANNER_FONT
+    if _UPDATE_BANNER_FONT is None:
+        _UPDATE_BANNER_FONT = pygame.font.SysFont("Arial", 16, bold=True)
+    return _UPDATE_BANNER_FONT
+
+
+def _draw_update_banner(canvas, result):
+    """Small, unobtrusive corner banner -- never blocks or covers menu buttons."""
+    tag, _url = result
+    text = f"Update available: {tag}  (see GitHub Releases)"
+    surf = _get_banner_font().render(text, True, (255, 255, 255))
+    pad = 8
+    box = pygame.Rect(0, 0, surf.get_width() + pad * 2, surf.get_height() + pad * 2)
+    box.bottomright = (canvas.get_width() - 12, canvas.get_height() - 12)
+    bg = pygame.Surface(box.size, pygame.SRCALPHA)
+    bg.fill((30, 90, 40, 210))
+    canvas.blit(bg, box.topleft)
+    canvas.blit(surf, (box.x + pad, box.y + pad))
+
+
+def _draw_tailscale_banner(canvas):
+    """Shown on the host/join lobby screens when Tailscale isn't detected.
+
+    Never installs or bundles Tailscale -- just points the player at its
+    download page (T key), same convention as _draw_update_banner above.
+    """
+    text = "Tailscale not detected - needed for online play outside your LAN. Press T for the download page."
+    surf = _get_banner_font().render(text, True, (255, 255, 255))
+    pad = 8
+    box = pygame.Rect(0, 0, surf.get_width() + pad * 2, surf.get_height() + pad * 2)
+    box.midtop = (canvas.get_width() // 2, 12)
+    bg = pygame.Surface(box.size, pygame.SRCALPHA)
+    bg.fill((120, 90, 20, 220))
+    canvas.blit(bg, box.topleft)
+    canvas.blit(surf, (box.x + pad, box.y + pad))
 
 
 # ================================================================
@@ -102,9 +154,15 @@ def main():
     pygame.init()
     settings = Settings()
     window = make_window(settings)
-    pygame.display.set_caption("Acey Duecy - 2 to 4 Player Strategy")
+    pygame.display.set_caption(f"Acey Duecy - 2 to 4 Player Strategy  v{UpdateChecker.current_version()}")
     canvas = pygame.Surface((BASE_W, BASE_H))
     clock = pygame.time.Clock()
+
+    # Update check runs once, off the main thread, so a slow/unreachable
+    # GitHub never delays startup. update_info stays empty forever if the
+    # check fails or the build is already current -- see UpdateChecker.py.
+    update_info = {}
+    threading.Thread(target=_check_for_update_async, args=(update_info,), daemon=True).start()
 
     profile_manager = ProfileManager()
     menu_manager = MenuManager(profile_manager)
@@ -194,6 +252,12 @@ def main():
                     window = make_window(settings)
                     continue
 
+                if (raw_event.type == pygame.KEYDOWN and raw_event.key == pygame.K_t
+                        and state["app_mode"] in ("HOST_LOBBY", "JOIN_LOBBY")
+                        and not TailscaleCheck.is_installed()):
+                    TailscaleCheck.open_download_page()
+                    continue
+
                 event = remap_event(raw_event, transform)
 
                 if state["app_mode"] == "SPLASH":
@@ -275,6 +339,8 @@ def main():
                 view.draw_splash(splash_image)
             elif state["app_mode"] == "MENU":
                 menu_manager.draw(canvas)
+                if update_info.get("result"):
+                    _draw_update_banner(canvas, update_info["result"])
             elif state["app_mode"] == "RULES":
                 _draw_backdrop(canvas, menu_manager, engine, view, state)
                 view.draw_rules_overlay(state["rules_page"])
@@ -291,8 +357,12 @@ def main():
                 draw_game(canvas, engine, view, state, show_focus=controller.connected())
             elif state["app_mode"] == "HOST_LOBBY":
                 host_lobby.draw(canvas)
+                if not TailscaleCheck.is_installed():
+                    _draw_tailscale_banner(canvas)
             elif state["app_mode"] == "JOIN_LOBBY":
                 join_lobby.draw(canvas)
+                if not TailscaleCheck.is_installed():
+                    _draw_tailscale_banner(canvas)
             elif state["app_mode"] == "NET_PAUSE":
                 if engine is not None:
                     draw_game(canvas, engine, view, {"overlay": None})

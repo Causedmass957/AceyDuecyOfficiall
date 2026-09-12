@@ -139,5 +139,10 @@ def main_test():
     client_session.close()
 
 
+def test_lobby_and_full_game_over_loopback():
+    """Pytest entry point for the manual script's main_test() above."""
+    main_test()
+
+
 if __name__ == "__main__":
     main_test()

@@ -1,0 +1,27 @@
+name: CI
+
+# Runs on every push to any branch and every PR into main. This is the gate
+# everything else (dev builds, releases) depends on -- nothing gets built
+# or published without passing here first.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests (excludes the manual/LAN-only suite)
+        run: python -m pytest -m "not manual" -v

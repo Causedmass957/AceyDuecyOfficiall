@@ -114,5 +114,10 @@ def main():
     client_net.close()
 
 
+def test_networking_stays_in_sync_over_real_sockets():
+    """Pytest entry point for the manual script's main() above."""
+    main()
+
+
 if __name__ == "__main__":
     main()

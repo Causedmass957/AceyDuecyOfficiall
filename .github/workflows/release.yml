@@ -1,0 +1,88 @@
+name: Release
+
+# The "staging" and "production" environments both come from this one
+# workflow, triggered by pushing a version tag:
+#
+#   git tag v0.6.0-beta1 && git push origin v0.6.0-beta1   -> staging  (pre-release)
+#   git tag v1.0.0        && git push origin v1.0.0        -> production (latest release)
+#
+# The `classify` job decides which by whether the tag has a -beta/-rc
+# suffix, then `build` runs under that GitHub Environment. If you add
+# required reviewers to the "staging"/"production" environments in this
+# repo's Settings -> Environments, that approval gate is enforced here
+# automatically -- pushing a tag no longer publishes until someone approves
+# the run. (That protection has to be configured in GitHub's UI; a workflow
+# file alone can't set required reviewers.)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.classify.outputs.version }}
+      prerelease: ${{ steps.classify.outputs.prerelease }}
+      env_name: ${{ steps.classify.outputs.env_name }}
+      channel: ${{ steps.classify.outputs.channel }}
+    steps:
+      - id: classify
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *-beta* || "$TAG" == *-rc* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "env_name=staging" >> "$GITHUB_OUTPUT"
+            echo "channel=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "env_name=production" >> "$GITHUB_OUTPUT"
+            echo "channel=" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: classify
+    runs-on: windows-latest
+    environment: ${{ needs.classify.outputs.env_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest -m "not manual" -v
+
+      - name: Write VERSION from tag
+        shell: bash
+        run: echo "${{ needs.classify.outputs.version }}" > VERSION
+
+      - name: Write CHANNEL (staging only -- keeps beta save data separate)
+        if: needs.classify.outputs.channel != ''
+        shell: bash
+        run: echo "${{ needs.classify.outputs.channel }}" > CHANNEL
+
+      - name: Build with PyInstaller
+        run: pyinstaller AceyDuecy.spec
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build installer
+        shell: cmd
+        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss /DMyAppVersion=${{ needs.classify.outputs.version }}'
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Acey Duecy ${{ github.ref_name }}"
+          prerelease: ${{ needs.classify.outputs.prerelease }}
+          files: installer_output/AceyDuecySetup-${{ needs.classify.outputs.version }}.exe

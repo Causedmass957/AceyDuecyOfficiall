@@ -20,6 +20,7 @@ import socket  # noqa: E402
 import time  # noqa: E402
 
 import pygame  # noqa: E402
+import pytest  # noqa: E402
 
 pygame.init()
 
@@ -168,6 +169,15 @@ def main_test():
 
     host_session.close()
     client_session.close()
+
+
+@pytest.mark.manual
+def test_lan_real_interface_full_game():
+    """Needs a real NIC/firewall to mean anything -- CI skips this (pytest -m "not manual").
+
+    Run by hand on a dev machine before shipping a networking change.
+    """
+    main_test()
 
 
 if __name__ == "__main__":
