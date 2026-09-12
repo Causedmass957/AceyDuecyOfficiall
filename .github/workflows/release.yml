@@ -47,6 +47,12 @@ jobs:
     needs: classify
     runs-on: windows-latest
     environment: ${{ needs.classify.outputs.env_name }}
+    # GITHUB_TOKEN defaults to read-only; softprops/action-gh-release needs
+    # write access to contents to create the release (this is what was
+    # missing the first time this workflow ran -- "Resource not accessible
+    # by integration" from the GitHub Releases API).
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
