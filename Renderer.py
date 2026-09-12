@@ -15,6 +15,7 @@ class Renderer:
         self.title_font = pygame.font.SysFont("Arial", 34, bold=True)
 
         self.history_scroll = 0
+        self._splash_cache = None
 
     def set_layout(self, layout):
         self.layout = layout
@@ -39,6 +40,28 @@ class Renderer:
         while text and font.size(text + "...")[0] > max_width:
             text = text[:-1]
         return text + "..."
+
+    # ============================================================
+    # TITLE SPLASH
+    # ============================================================
+    def draw_splash(self, image):
+        self.screen.fill((18, 14, 6))
+
+        if image is not None:
+            cache = self._splash_cache
+            if cache is None or cache[0] is not image:
+                iw, ih = image.get_size()
+                max_w, max_h = SCREEN_WIDTH - 80, SCREEN_HEIGHT - 160
+                scale = min(max_w / iw, max_h / ih)
+                sw, sh = max(1, int(iw * scale)), max(1, int(ih * scale))
+                self._splash_cache = (image, pygame.transform.smoothscale(image, (sw, sh)))
+                cache = self._splash_cache
+            scaled = cache[1]
+            self.screen.blit(scaled, scaled.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30)))
+
+        if (pygame.time.get_ticks() // 500) % 2 == 0:
+            prompt = self.title_font.render("PRESS ANY BUTTON TO START", True, (255, 221, 60))
+            self.screen.blit(prompt, prompt.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 70)))
 
     # ============================================================
     # PLAYER COUNT SCREEN (legacy fallback)
