@@ -1,3 +1,5 @@
+import random
+
 import pygame
 from Constants import *
 
@@ -14,7 +16,19 @@ class Renderer:
         self.mono_font = pygame.font.SysFont("Consolas", 15)
         self.title_font = pygame.font.SysFont("Arial", 34, bold=True)
 
-        self.history_scroll = 0
+        self.history_page = 0
+
+        # Dice-roll animation state (see _sync_dice / _draw_dice).
+        self.DICE_ANIM_MS = 550
+        self.DICE_FACE_SWAP_MS = 70
+        self._dice_engine = None
+        self._dice_pid = None
+        self._dice_roll_count = 0
+        self._dice_values = None
+        self._dice_display_vals = None
+        self._dice_anim_end = 0
+        self._dice_next_face_swap = 0
+
         self._splash_cache = None
 
     def set_layout(self, layout):
@@ -189,8 +203,18 @@ class Renderer:
 
         turn_surf = self.big_font.render(f"{player_name}'s Turn", True, turn_color)
         turn_rect = turn_surf.get_rect(center=(SCREEN_WIDTH // 2, 30))
-        pygame.draw.rect(self.screen, (18, 18, 18), turn_rect.inflate(44, 12), border_radius=6)
+        turn_bg = turn_rect.inflate(44, 12)
+        pygame.draw.rect(self.screen, (18, 18, 18), turn_bg, border_radius=6)
         self.screen.blit(turn_surf, turn_rect)
+
+        # The top-center band (turn banner / hint_y) is also where the
+        # controller focus-ring pill draws - that pill is opaque and was
+        # painting straight over dice placed there. The left margin
+        # beside the board is never touched by anything else, so the
+        # dice live there instead: a small tray, always visible.
+        self._sync_dice(engine)
+        dice_cx = int((lay.SIDE_RESERVE + lay.board_left) / 2)
+        self._draw_dice(dice_cx, int(lay.mid_y - 15))
 
         label, button_color = self._action_button(engine)
         pygame.draw.rect(self.screen, button_color, lay.roll_button, border_radius=10)
@@ -249,10 +273,135 @@ class Renderer:
             self.screen.blit(ms, ms.get_rect(center=(SCREEN_WIDTH // 2, lay.hint_y)))
 
         if pad:
-            legend = ("Stick: move highlight    A: select    B: cancel    "
-                      "X: roll / pass    LB: undo    Y: history    Menu: pause")
-            ls = self.chip_small_font.render(legend, True, (150, 150, 150))
-            self.screen.blit(ls, ls.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 9)))
+            self._draw_pad_legend(SCREEN_WIDTH // 2, lay.pad_legend_y)
+
+    # ============================================================
+    # DICE
+    #
+    # engine.moves_available holds whatever was just rolled (two dice,
+    # four of a kind for doubles / the Acey-Deucey bonus, or [1, 2]).
+    # current_turn_entry["rolls"] only ever grows within a turn - one
+    # string per actual roll - so its length is a clean edge-trigger
+    # for "a new roll just happened" that isn't fooled by moves being
+    # spent (which shrinks moves_available without a new roll).
+    # ============================================================
+    def _sync_dice(self, engine):
+        if engine is not self._dice_engine:
+            self._dice_engine = engine
+            self._dice_pid = None
+            self._dice_roll_count = 0
+            self._dice_values = None
+            self._dice_display_vals = None
+            self._dice_anim_end = 0
+
+        pid = engine.current_player
+        entry = engine.current_turn_entry
+        roll_count = len(entry["rolls"]) if entry else 0
+
+        if pid != self._dice_pid:
+            self._dice_pid = pid
+            self._dice_roll_count = roll_count
+            self._dice_values = None
+            self._dice_anim_end = 0
+        elif roll_count != self._dice_roll_count:
+            self._dice_roll_count = roll_count
+            vals = list(engine.moves_available[:2]) if engine.moves_available else (self._dice_values or [1, 1])
+            if len(vals) < 2:
+                vals = (vals * 2)[:2]
+            self._dice_values = vals
+            self._dice_anim_end = pygame.time.get_ticks() + self.DICE_ANIM_MS
+            self._dice_next_face_swap = 0
+
+    def _draw_dice(self, cx, top):
+        if not self._dice_values:
+            return
+
+        now = pygame.time.get_ticks()
+        if now < self._dice_anim_end:
+            if now >= self._dice_next_face_swap:
+                self._dice_display_vals = [random.randint(1, 6), random.randint(1, 6)]
+                self._dice_next_face_swap = now + self.DICE_FACE_SWAP_MS
+        else:
+            self._dice_display_vals = self._dice_values
+
+        size, gap = 30, 8
+        total = size * 2 + gap
+        x0 = cx - total // 2
+        for i, val in enumerate(self._dice_display_vals):
+            rect = pygame.Rect(x0 + i * (size + gap), top, size, size)
+            self._draw_die_face(rect, val)
+
+    def _draw_die_face(self, rect, value):
+        pygame.draw.rect(self.screen, (240, 240, 235), rect, border_radius=6)
+        pygame.draw.rect(self.screen, (25, 25, 25), rect, 2, border_radius=6)
+
+        r = max(2, rect.width // 9)
+        cx, cy = rect.center
+        off = rect.width * 0.24
+        pips = {
+            1: [(0, 0)],
+            2: [(-off, -off), (off, off)],
+            3: [(-off, -off), (0, 0), (off, off)],
+            4: [(-off, -off), (off, -off), (-off, off), (off, off)],
+            5: [(-off, -off), (off, -off), (0, 0), (-off, off), (off, off)],
+            6: [(-off, -off), (off, -off), (-off, 0), (off, 0), (-off, off), (off, off)],
+        }
+        for dx, dy in pips.get(value, []):
+            pygame.draw.circle(self.screen, (30, 30, 30), (int(cx + dx), int(cy + dy)), r)
+
+    # ============================================================
+    # CONTROLLER BUTTON LEGEND
+    # Small colored button-shaped icons (matching Xbox pad colors)
+    # next to bold action text, so the mapping reads at a glance
+    # instead of as a wall of small gray prose.
+    # ============================================================
+    _PAD_LEGEND = [
+        ("STICK", (150, 150, 150), "Move"),
+        ("A", (87, 171, 90), "Select"),
+        ("B", (196, 68, 68), "Cancel"),
+        ("X", (66, 133, 191), "Roll / Pass"),
+        ("Y", (206, 173, 60), "Log"),
+        ("LB", (150, 150, 150), "Undo"),
+        ("MENU", (150, 150, 150), "Pause"),
+    ]
+
+    def _pad_icon_width(self, label):
+        if label in ("A", "B", "X", "Y"):
+            return 22
+        return self.chip_small_font.size(label)[0] + 16
+
+    def _draw_pad_icon(self, cx, cy, label, color):
+        if label in ("A", "B", "X", "Y"):
+            r = 11
+            pygame.draw.circle(self.screen, color, (cx, cy), r)
+            pygame.draw.circle(self.screen, (20, 20, 20), (cx, cy), r, 2)
+            t = self.chip_small_font.render(label, True, (20, 20, 20))
+            self.screen.blit(t, t.get_rect(center=(cx, cy)))
+        else:
+            w = self._pad_icon_width(label)
+            rect = pygame.Rect(0, 0, w, 22)
+            rect.center = (cx, cy)
+            pygame.draw.rect(self.screen, color, rect, border_radius=6)
+            t = self.chip_small_font.render(label, True, (20, 20, 20))
+            self.screen.blit(t, t.get_rect(center=rect.center))
+
+    def _draw_pad_legend(self, cx, y):
+        gap = 14
+        parts = []
+        total_w = 0
+        for label, color, text in self._PAD_LEGEND:
+            icon_w = self._pad_icon_width(label)
+            text_surf = self.chip_font.render(text, True, (225, 225, 225))
+            parts.append((label, color, icon_w, text_surf))
+            total_w += icon_w + 6 + text_surf.get_width()
+        total_w += gap * (len(parts) - 1)
+
+        x = cx - total_w // 2
+        for label, color, icon_w, text_surf in parts:
+            self._draw_pad_icon(x + icon_w // 2, y, label, color)
+            x += icon_w + 6
+            self.screen.blit(text_surf, text_surf.get_rect(midleft=(x, y)))
+            x += text_surf.get_width() + gap
 
     # ============================================================
     # CONTROLLER FOCUS HIGHLIGHT
@@ -269,13 +418,13 @@ class Renderer:
         color = (255, 214, 10)
 
         if engine.selected_index is None:
-            sources = engine.movable_sources(pid)
+            sources = self.layout.order_for_focus(engine.movable_sources(pid), pid)
             if not sources:
                 return
             target = sources[state.get("focus_source_i", 0) % len(sources)]
             self._focus_ring(target, pid, engine, color)
         else:
-            dests = engine.legal_destinations(pid, engine.selected_index)
+            dests = self.layout.order_for_focus(engine.legal_destinations(pid, engine.selected_index), pid)
             if not dests:
                 return
             target = dests[state.get("focus_dest_i", 0) % len(dests)]
@@ -324,7 +473,7 @@ class Renderer:
 
         self.screen.blit(self.title_font.render("Game Tracking", True, WHITE), (60, 26))
         self.screen.blit(self.chip_small_font.render(
-            "scroll wheel to move through the log  -  click anywhere or press H / Esc to close",
+            "scroll wheel / arrows / < > to page through the log  -  click anywhere else or press H / Esc to close",
             True, (180, 180, 180)), (62, 70))
 
         panel = pygame.Rect(SCREEN_WIDTH - 470, 96, 410, 320)
@@ -355,34 +504,70 @@ class Renderer:
         if engine.current_turn_entry is not None:
             entries.append(engine.current_turn_entry)
 
+        max_line_width = log_panel.width - 32
         lines = []
         for entry in entries:
             rolls = ", ".join(entry["rolls"]) if entry["rolls"] else "-"
             moves = ", ".join(entry["moves"]) if entry["moves"] else "(no moves)"
             lines.append((f"T{entry['turn']:>3}  {entry['name'][:10]:<10}  {rolls}", entry["player"]))
-            for chunk in self._wrap(f"        {moves}", 84):
+            for chunk in self._wrap(f"        {moves}", max_line_width):
                 lines.append((chunk, entry["player"]))
 
-        visible = (log_panel.height - 60) // 20
-        max_scroll = max(0, len(lines) - visible)
-        self.history_scroll = max(0, min(self.history_scroll, max_scroll))
-        start = max(0, len(lines) - visible - self.history_scroll)
-        end = start + visible
+        nav_h = 40
+        list_top = log_panel.y + 48
+        list_bottom = log_panel.bottom - nav_h
+        visible = max(1, (list_bottom - list_top) // 20)
+        total_pages = max(1, -(-len(lines) // visible))  # ceil div
+        self.history_page = max(0, min(self.history_page, total_pages - 1))
 
-        y = log_panel.y + 48
+        end = max(0, len(lines) - visible * self.history_page)
+        start = max(0, end - visible)
+
+        y = list_top
         for text, pid in lines[start:end]:
             self.screen.blit(self.mono_font.render(text, True, PLAYER_COLORS.get(pid, WHITE)),
                              (log_panel.x + 16, y))
             y += 20
 
-    def _wrap(self, text, width):
+        page_txt = self.chip_small_font.render(
+            f"Page {self.history_page + 1} / {total_pages}", True, (190, 190, 190))
+        self.screen.blit(page_txt, page_txt.get_rect(midtop=(log_panel.centerx, list_bottom + 10)))
+
+        older = self.history_page < total_pages - 1
+        newer = self.history_page > 0
+        left_rect = pygame.Rect(log_panel.x + 16, list_bottom + 4, 110, 30)
+        right_rect = pygame.Rect(log_panel.right - 126, list_bottom + 4, 110, 30)
+        for rect, label, active in ((left_rect, "< Older", older), (right_rect, "Newer >", newer)):
+            pygame.draw.rect(self.screen, (120, 120, 150) if active else (60, 60, 60), rect, border_radius=8)
+            t = self.chip_font.render(label, True, BLACK if active else (120, 120, 120))
+            self.screen.blit(t, t.get_rect(center=rect.center))
+
+        return left_rect, right_rect
+
+    def _wrap(self, text, font_width, indent="        "):
+        font = self.mono_font
+        if font.size(text)[0] <= font_width:
+            return [text]
+
         out = []
-        while len(text) > width:
-            cut = text.rfind(", ", 0, width)
-            cut = width if cut == -1 else cut + 1
-            out.append(text[:cut])
-            text = "        " + text[cut:].lstrip()
-        out.append(text)
+        current = text
+        while font.size(current)[0] > font_width:
+            cut = -1
+            for i, ch in enumerate(current):
+                if ch in (" ", ",") and font.size(current[:i + 1])[0] <= font_width:
+                    cut = i + 1
+            if cut <= 0:
+                lo, hi = 1, len(current)
+                while lo < hi:
+                    mid = (lo + hi + 1) // 2
+                    if font.size(current[:mid])[0] <= font_width:
+                        lo = mid
+                    else:
+                        hi = mid - 1
+                cut = max(1, lo)
+            out.append(current[:cut].rstrip())
+            current = indent + current[cut:].lstrip()
+        out.append(current)
         return out
 
     # ============================================================

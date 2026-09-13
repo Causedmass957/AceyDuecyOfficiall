@@ -17,7 +17,7 @@ from Constants import SCREEN_WIDTH, SCREEN_HEIGHT
 class Layout:
     # Reserved bands around the board (logical px).
     TOP_RESERVE = 92
-    BOTTOM_RESERVE = 124
+    BOTTOM_RESERVE = 150
     SIDE_RESERVE = 28
 
     # Board proportions, measured in "units" (one unit = one point column width).
@@ -81,13 +81,17 @@ class Layout:
             4: pygame.Rect(w - chip_w - 14, 10, chip_w, chip_h),
         }
 
-        btn_y = h - 74
+        btn_y = h - 100
         self.roll_button = pygame.Rect(w // 2 - 66, btn_y, 132, 50)
         self.undo_button = pygame.Rect(w // 2 - 214, btn_y, 140, 50)
         self.history_button = pygame.Rect(w // 2 + 82, btn_y, 140, 50)
         self.rules_button = pygame.Rect(int(self.board_right) + 14, int(self.mid_y) - 26, 44, 52)
         if self.rules_button.right > w - 6:
             self.rules_button = pygame.Rect(w - 52, int(self.mid_y) - 26, 44, 52)
+
+        # Row for the controller-button legend, below the action buttons
+        # and clear of the bottom edge.
+        self.pad_legend_y = self.roll_button.bottom + 22
 
         cx = w // 2
         self.selection_buttons = {
@@ -165,3 +169,24 @@ class Layout:
     def chip_at(self, pos, player_id):
         rect = self.chip_rects.get(player_id)
         return bool(rect and rect.collidepoint(pos))
+
+    # ------------------------------------------------------------------
+    # Controller focus ordering
+    #
+    # The bottom row's board indices run right -> left on screen (see the
+    # module docstring), while movable_sources()/legal_destinations() just
+    # hand back raw ascending board indices. Cycling in that raw order
+    # makes the D-pad/stick feel inverted whenever the highlightable set
+    # sits on the bottom row. Sorting by actual on-screen x keeps
+    # NAV_NEXT/NAV_PREV moving the highlight right/left the way the stick
+    # was pushed, for every seat, regardless of row or path direction.
+    # ------------------------------------------------------------------
+    def focus_sort_key(self, target, player_id):
+        if target == -1:
+            return (self.bar_left + self.bar_right) / 2
+        if target in (-2, 24):
+            return self.chip_rects[player_id].centerx
+        return self.point_base_x(target)
+
+    def order_for_focus(self, targets, player_id):
+        return sorted(targets, key=lambda t: self.focus_sort_key(t, player_id))
